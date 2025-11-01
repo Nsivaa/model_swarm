@@ -257,7 +257,7 @@ if __name__ == "__main__":
     argParser.add_argument("--correctness_emergence", default=False, help="whether to track correctness changes wrt iteration") # 0, 1, for Fig 2
     argParser.add_argument("--dropK", default=0, help="dropout-K, 0-1") # for fig 9
     argParser.add_argument("--dropN", default=0, help="dropout-N, 0-1") # for fig 9
-    
+    argParser.add_argument("--dare_ties", default=0, help="whether to use DARE-TIES merging") # 0, 1
 
     args = argParser.parse_args()
     search_pass_name = args.name
@@ -280,6 +280,7 @@ if __name__ == "__main__":
     fast_merge = int(args.fast_merge)
     project_name_wb = args.project_name_wb
     populate_initial_experts = int(args.populate_initial_experts)
+    use_dare_ties = int(args.dare_ties)
     try:
         initial_experts_num = int(args.initial_experts_num)
     except:
@@ -352,9 +353,10 @@ if __name__ == "__main__":
             w_2 = 1 - w_1
             shutil.copytree(parent_1, child_path)
             
-            dare_ties_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], directly_load_safetensors=1, density=dropout_rate)
-            
-            #lora_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], fast_merge)
+            if use_dare_ties:
+                dare_ties_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], directly_load_safetensors=1, density=dropout_rate)
+            else:
+                lora_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], fast_merge)
             
             particle_paths.append(child_path)
 
