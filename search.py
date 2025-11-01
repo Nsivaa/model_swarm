@@ -10,7 +10,7 @@ import logging
 import datetime
 import wandb
 from overall_metrics import overall_metrics
-from merge import lora_merge
+from merge import lora_merge, dare_ties_merge
 from evaluate import evaluate, evaluate_test, update_only_one_or_two, lora_weight_visualize
 from multiprocessing import Pool
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -108,9 +108,9 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
     }
     for i in range(len(particle_paths)):
         wandb_log["particle_" + str(i) + "_now"] = utility_scratchpad["particle_" + str(i) + "_now"]
-    
     wandb.log(wandb_log)
-    
+
+
     with open(os.path.join("search", search_pass_name, "utility_scratchpad.json"), "w") as f:
         json.dump(utility_scratchpad, f, indent=4)
     
@@ -234,6 +234,7 @@ if __name__ == "__main__":
     argParser.add_argument("--social_coeff", default = 0.3, help="social coefficient of particle weight update")
     argParser.add_argument("--repel_coeff", default = 0.3, help="repel coefficient of particle weight update")
     argParser.add_argument("--step_length", default = 1, help="step length of the search in the direction of velocity")
+    argParser.add_argument("--dropout_rate", default = 0.3, help="dropout rate for DARE merging")
     argParser.add_argument("-p", "--patience", default = 10, help="patience of the search")
     argParser.add_argument("-m", "--max_iteration", default = 200, help="max iteration of the search")
     argParser.add_argument("--weight_randomess", default = 1, help="whether to use weight randomess") # 0, 1
@@ -256,6 +257,7 @@ if __name__ == "__main__":
     argParser.add_argument("--correctness_emergence", default=False, help="whether to track correctness changes wrt iteration") # 0, 1, for Fig 2
     argParser.add_argument("--dropK", default=0, help="dropout-K, 0-1") # for fig 9
     argParser.add_argument("--dropN", default=0, help="dropout-N, 0-1") # for fig 9
+    
 
     args = argParser.parse_args()
     search_pass_name = args.name
@@ -269,6 +271,7 @@ if __name__ == "__main__":
     repel_coeff = float(args.repel_coeff)
     patience = int(args.patience)
     step_length = float(args.step_length)
+    dropout_rate = float(args.dropout_rate)
     max_iteration = int(args.max_iteration)
     weight_randomess = int(args.weight_randomess)
     initial_expert_directory = args.initial_expert_directory
@@ -348,7 +351,11 @@ if __name__ == "__main__":
             w_1 = random.random() * 2 # half interpolation, half extrapolation
             w_2 = 1 - w_1
             shutil.copytree(parent_1, child_path)
-            lora_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], fast_merge)
+            
+            dare_ties_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], directly_load_safetensors=1, density=dropout_rate)
+            
+            #lora_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], fast_merge)
+            
             particle_paths.append(child_path)
 
     if correctness_emergence:
@@ -394,7 +401,6 @@ if __name__ == "__main__":
         log_with_flush("--------------------------")
         log_with_flush("iteration "+str(iter_count)+"! "+curret_time_string())
         log_with_flush("updating particles...")
-
         # patience and ending condition
         with open(os.path.join("search", search_pass_name, "utility_scratchpad.json")) as f:
             utility_scratchpad = json.load(f)
@@ -529,6 +535,7 @@ if __name__ == "__main__":
         for i in range(len(particle_paths)):
             wandb_log["particle_" + str(i) + "_now"] = utility_scratchpad["particle_" + str(i) + "_now"]
         
+        wandb_log["iterations"] = int(iter_count)
         wandb.log(wandb_log)
         
         with open("search/"+search_pass_name+"/utility_scratchpad.json", "w") as f:

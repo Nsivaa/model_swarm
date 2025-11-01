@@ -4,6 +4,7 @@ import torch
 from safetensors.torch import load_file, save_file
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft.utils.save_and_load import set_peft_model_state_dict, get_peft_model_state_dict
+from peft.utils import merge_utils
 
 def lora_merge(weights, lora_name_list, output_name, gpu_id, directly_load_safetensors = 0):
 
@@ -64,3 +65,76 @@ def lora_merge(weights, lora_name_list, output_name, gpu_id, directly_load_safet
 
 # sanity check example
 # lora_merge([0.3, 0.6, 0.8], ["./initial_experts/lima", "./initial_experts/cot", "./initial_experts/science"], "./new", 0, directly_load_safetensors=1)
+
+def dare_ties_merge(weights, lora_name_list, output_name, gpu_id,
+                    directly_load_safetensors=0, density=0.5,
+                    majority_sign_method="total", seed=None):
+    """
+    Merge LoRA adapters using the DARE-TIES method (Hugging Face PEFT approach).
+
+    Args:
+        weights (list[float]): Merge weights for each LoRA adapter.
+        lora_name_list (list[str]): Paths to LoRA adapters.
+        output_name (str): Directory to save the merged adapter.
+        gpu_id (int): CUDA device id.
+        directly_load_safetensors (bool): If 1, merge state_dicts directly (fast path).
+        density (float): Fraction of weights to keep.
+        majority_sign_method (str): Strategy for resolving sign ties ("total" or "frequency").
+        seed (int, optional): Random seed.
+    """
+    if seed is not None:
+        torch.manual_seed(seed)
+
+    # SLOW MERGE 
+    if not directly_load_safetensors:
+        lora_state_dict_list = []
+        for lora_name in lora_name_list:
+            model = AutoModelForCausalLM.from_pretrained(lora_name).to(f"cuda:{gpu_id}")
+            lora_state_dict_list.append(get_peft_model_state_dict(model))
+            if lora_name != lora_name_list[-1]:
+                del model
+
+        final_state_dict = {}
+        all_keys = lora_state_dict_list[0].keys()
+        for key in all_keys:
+            task_tensors = [sd[key] for sd in lora_state_dict_list]
+            task_tensors = [t.to("cpu") for t in task_tensors]
+
+            merged = merge_utils.dare_ties(
+                task_tensors=task_tensors,
+                weights=torch.tensor(weights, dtype=task_tensors[0].dtype),
+                density=density,
+                majority_sign_method=majority_sign_method,
+            )
+            final_state_dict[key] = merged
+
+        set_peft_model_state_dict(model, final_state_dict)
+        if os.path.exists(output_name):
+            shutil.rmtree(output_name)
+        model.save_pretrained(output_name)
+
+    # FAST MERGE 
+    else:
+        lora_state_dict_list = []
+        for lora_name in lora_name_list:
+            sd = load_file(os.path.join(lora_name, "adapter_model.safetensors"), device="cpu")
+            lora_state_dict_list.append(sd)
+
+        final_state_dict = {}
+        all_keys = lora_state_dict_list[0].keys()
+        for key in all_keys:
+            task_tensors = [sd[key] for sd in lora_state_dict_list]
+            task_tensors = [t.to("cpu") for t in task_tensors]
+
+            merged = merge_utils.dare_ties(
+                task_tensors=task_tensors,
+                weights=torch.tensor(weights, dtype=task_tensors[0].dtype),
+                density=density,
+                majority_sign_method=majority_sign_method,
+            )
+            final_state_dict[key] = merged
+
+        if not os.path.exists(output_name):
+            os.mkdir(output_name)
+        save_file(final_state_dict, os.path.join(output_name, "adapter_model.safetensors"))
+        return final_state_dict

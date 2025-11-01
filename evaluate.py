@@ -33,7 +33,7 @@ try:
     )
 except:
     if not perspective_already_warned:
-        warnings.warn("Ignore this if not running RealToxicityPrompts evaluation: provide your own perspective API key through google cloud. Check out line 23.")
+        # warnings.warn("Ignore this if not running RealToxicityPrompts evaluation: provide your own perspective API key through google cloud. Check out line 23.")
         perspective_already_warned = True
 
 multitask_domain_dataset_dict = {

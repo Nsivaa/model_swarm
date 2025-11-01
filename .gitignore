@@ -40,7 +40,9 @@ ppo.py
 token_probs.py
 prompt_variation.py
 trajectory.py
-
+dep.py
+best_checkpoints_paper
+best_checkpoints_dare_ties
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
