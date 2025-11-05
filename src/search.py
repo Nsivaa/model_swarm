@@ -9,7 +9,8 @@ import random
 import logging
 import datetime
 import wandb
-from overall_metrics import overall_metrics
+import numpy as np
+from overall_metrics import overall_metrics, plot_particle_trajectories
 from merge import lora_merge, dare_ties_merge
 from evaluate import evaluate, evaluate_test, update_only_one_or_two, lora_weight_visualize
 from multiprocessing import Pool
@@ -281,6 +282,7 @@ if __name__ == "__main__":
     project_name_wb = args.project_name_wb
     populate_initial_experts = int(args.populate_initial_experts)
     use_dare_ties = int(args.dare_ties)
+
     try:
         initial_experts_num = int(args.initial_experts_num)
     except:
@@ -320,10 +322,16 @@ if __name__ == "__main__":
     with open(os.path.join("search", args.name, "args.txt"), "w") as f:
         f.write(str(args))
 
+
     run = wandb.init(name=search_pass_name, project=project_name_wb)
     run.config.update(args)
     torch.multiprocessing.set_start_method('spawn')
     random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(42)
+
     # Configure logging to write to a file
     logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
 
@@ -425,7 +433,7 @@ if __name__ == "__main__":
             
             with open(os.path.join("search", search_pass_name, "particle_trajectory.json"), "w") as f:
                 json.dump(particle_trajectory, f, indent=4)
-        
+
         if correctness_emergence:
             for i in range(len(particle_paths)):
                 model_path = os.path.join("search", search_pass_name, "particle_"+str(i), "now")
@@ -548,6 +556,9 @@ if __name__ == "__main__":
 
         # step length update
         step_length = max(step_length * step_length_factor, minimum_step_length)
+
+    if to_visualize_flag:
+        plot_particle_trajectories(search_pass_name, dataset)
 
     log_with_flush("ending search and starting test set evaluation... "+curret_time_string())
 

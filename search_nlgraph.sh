@@ -18,10 +18,10 @@ do
     step_length=${step_length_list[$RANDOM % ${#step_length_list[@]} ]}
     dropout_rate=${dropout_rate_list[$RANDOM % ${#dropout_rate_list[@]} ]}
 
-    python search.py \
-        -n dt_knowledge_crosswords_{$inertia}_{$cognitive_coeff}_{$social_coeff}_{$repel_coeff}_{$step_length}_{$dropout_rate} \
+    python src/search.py \
+        -n truthfulqa_{$inertia}_{$cognitive_coeff}_{$social_coeff}_{$repel_coeff}_{$step_length}_{$dropout_rate} \
         -e multiple_choice \
-        -d knowledge_crosswords \
+        -d truthfulqa \
         -g 0 \
         --inertia $inertia \
         --cognitive_coeff $cognitive_coeff \

@@ -4,6 +4,7 @@ import time
 import torch
 import datetime
 import reward_modeling
+import numpy as np
 from tqdm import tqdm
 from datasets import load_dataset
 from tenacity import retry, wait_random_exponential, stop_after_attempt
@@ -525,6 +526,13 @@ def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-
 # evaluation on the test set, similar to the dev set evaluation, but kept seperate in case the test eval might be dratiscally different from dev in generalization settings
 def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-7b-it", only_one_or_two = None, obj4_save_generation=False):
 
+    seed = 42
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
     global model
     global tokenizer
 
@@ -542,6 +550,8 @@ def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/g
         model.to(f"cuda:{gpu_id}")
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
+
+    model.eval()
 
     # prompt = "What is the capital of France? Answer:"
     # input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to("cuda")

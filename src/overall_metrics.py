@@ -2,6 +2,9 @@ import os
 import json
 import argparse
 from sklearn.metrics import accuracy_score
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 def avg(lst):
     return sum(lst) / len(lst)
@@ -276,3 +279,52 @@ def overall_metrics(name, eval_type, top_k = 10):
     print("g last change index: ", g_history_last_change_index)
 
     return final_metrics
+
+
+def plot_particle_trajectories(search_pass_name, dataset):
+    """
+    Plot particle trajectories (2D LoRA weight space) across iterations.
+    Each particle's movement is a colored line with start/end markers.
+    """
+
+    traj_path = os.path.join("search", search_pass_name, "particle_trajectory.json")
+    if not os.path.exists(traj_path):
+        raise FileNotFoundError(f"Trajectory file not found: {traj_path}")
+
+    # Load trajectories
+    with open(traj_path, "r") as f:
+        particle_trajectory = json.load(f)
+
+    plt.figure(figsize=(6, 6))
+    cmap = plt.get_cmap("tab10")
+
+    for i, coords in particle_trajectory.items():
+        coords = np.array(coords)
+        if coords.ndim != 2 or coords.shape[1] < 2:
+            print(f"Skipping particle {i}: invalid coordinate shape {coords.shape}")
+            continue
+
+        x, y = coords[:, 0], coords[:, 1]
+
+        # Draw the path as a continuous line
+        plt.plot(x, y, color=cmap(int(i) % 10), linewidth=1.2, alpha=0.9)
+
+        # Mark start (red star) and end (green dot)
+        plt.scatter(x[0], y[0], color='red', marker='*', s=70, edgecolors='none')
+        plt.scatter(x[-1], y[-1], color='green', marker='o', s=50, edgecolors='none')
+
+    plt.title(f"{dataset} Trajectory", fontsize=13)
+    plt.xlabel("Weight 1")
+    plt.ylabel("Weight 2")
+    plt.grid(False)
+    plt.axhline(0, color='black', lw=0.5, alpha=0.3)
+    plt.axvline(0, color='black', lw=0.5, alpha=0.3)
+    plt.tight_layout()
+
+    # Save plot
+    save_path = os.path.join("search", search_pass_name, f"{dataset}_trajectory.png")
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+   
