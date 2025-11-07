@@ -15,6 +15,7 @@ from safetensors.torch import load_file, save_file
 import random
 import vertexai
 import warnings
+import traceback
 from vertexai.generative_models import GenerativeModel, GenerationConfig, SafetySetting, HarmCategory, HarmBlockThreshold
 
 ICL_PROMPT = None
@@ -222,7 +223,7 @@ def batch_generate(model, tokenizer, prompts, gpu_id, batch_size=10, max_new_tok
         batch_prompts = prompts[start_idx:end_idx]
 
         input_ids = tokenizer(batch_prompts, return_tensors="pt", padding=True).input_ids.to(f"cuda:{gpu_id}")
-        output = model.generate(input_ids, max_new_tokens=max_new_tokens, do_sample = False)
+        output = safe_generate(model, input_ids, max_new_tokens=max_new_tokens)
 
         for j in range(len(output)):
             outputs.append(tokenizer.decode(output[j][len(input_ids[j]):], skip_special_tokens=True).strip())
@@ -231,6 +232,34 @@ def batch_generate(model, tokenizer, prompts, gpu_id, batch_size=10, max_new_tok
         torch.cuda.empty_cache()
     
     return outputs
+
+def safe_generate(model, input_ids, max_new_tokens=10, retries=10, delay=30):
+    """Generate output safely by retrying when CUDA OOM occurs."""
+
+    for attempt in range(1, retries + 1):
+        try:
+            with torch.no_grad():
+                return model.generate(
+                    input_ids,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=False
+                )
+
+        except (torch.cuda.OutOfMemoryError, torch.OutOfMemoryError):
+            print(f"[Attempt {attempt}/{retries}] CUDA OOM. Retrying in {delay}s...")
+            torch.cuda.empty_cache()
+            time.sleep(delay)
+
+        except RuntimeError as e:
+            if "CUDA out of memory" in str(e):
+                print(f"[Attempt {attempt}/{retries}] CUDA OOM. Retrying in {delay}s...")
+                torch.cuda.empty_cache()
+                time.sleep(delay)
+            else:
+                traceback.print_exc()
+                raise e
+
+    raise RuntimeError(f"Failed after {retries} retries due to persistent CUDA OOM.")
 
 # given a model, evaluate it on the utility function and return the scalar value
 def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-7b-it", save_dev_flag = False, only_one_or_two = None, skip_flag = False):
