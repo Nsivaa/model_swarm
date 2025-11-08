@@ -63,14 +63,6 @@ except:
 
 ONLY_ONE_OR_TWO = None
 
-# determisnistic model behavior for reproducibility
-seed=42
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-
 safety_config = [
     SafetySetting(
         category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
@@ -262,8 +254,16 @@ def safe_generate(model, input_ids, max_new_tokens=10, retries=10, delay=30):
     raise RuntimeError(f"Failed after {retries} retries due to persistent CUDA OOM.")
 
 # given a model, evaluate it on the utility function and return the scalar value
-def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-7b-it", save_dev_flag = False, only_one_or_two = None, skip_flag = False):
+def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-7b-it", save_dev_flag = False, only_one_or_two = None, skip_flag = False, seed=None):
 
+    if seed:
+        random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+    
     if skip_flag:
         return None
 
@@ -553,15 +553,16 @@ def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-
         return get_effective_reliability(correct_flags, abstain_flags)
 
 # evaluation on the test set, similar to the dev set evaluation, but kept seperate in case the test eval might be dratiscally different from dev in generalization settings
-def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-7b-it", only_one_or_two = None, obj4_save_generation=False):
+def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-7b-it", only_one_or_two = None, obj4_save_generation=False, seed=None):
 
-    seed = 42
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
+    if seed:
+        random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+    
     global model
     global tokenizer
 
@@ -580,7 +581,7 @@ def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/g
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
 
-    model.eval()
+    # model.eval()
 
     # prompt = "What is the capital of France? Answer:"
     # input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to("cuda")

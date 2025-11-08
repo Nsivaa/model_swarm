@@ -58,7 +58,10 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
     if starting_velocity_mode == "zero":
         merge_args = []
         for i in range(len(particle_paths)):
-            merge_args.append(([0], [os.path.join("search", search_pass_name, "particle_"+str(i), "now")], os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), gpus[assign_gpu(len(gpus), i, len(particle_paths))], fast_merge))
+            merge_args.append(([0], [os.path.join("search", search_pass_name, "particle_"+str(i), "now")], 
+                os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), 
+                gpus[assign_gpu(len(gpus), i, len(particle_paths))], fast_merge, seed
+                ))
 
         pool = Pool(processes=1)
         pool.starmap(lora_merge, merge_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -71,7 +74,11 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
             secret_lover_id = random.randint(0, len(particle_paths)-1)
             while secret_lover_id == i:
                 secret_lover_id = random.randint(0, len(particle_paths)-1)
-            merge_args.append(([-1, 1], [os.path.join("search", search_pass_name, "particle_"+str(i), "now"), os.path.join("search", search_pass_name, "particle_"+str(secret_lover_id), "now")], os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), gpus[assign_gpu(len(gpus), i, len(particle_paths))], fast_merge))
+            merge_args.append(([-1, 1], [os.path.join("search", search_pass_name, "particle_"+str(i), "now"), 
+                os.path.join("search", search_pass_name, "particle_"+str(secret_lover_id), "now")],
+                os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), 
+                gpus[assign_gpu(len(gpus), i, len(particle_paths))], fast_merge
+                ))
         
         pool = Pool(processes=1)
         pool.starmap(lora_merge, merge_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -84,7 +91,10 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
     # evaluate the utility of starting particles
     eval_args = []
     for i in range(len(particle_paths)):
-        eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, True))
+        eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), 
+            eval_type, dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], 
+            base_model, True, None, False, seed
+            ))
     
     pool = Pool(processes=len(gpus))
     results = pool.starmap(evaluate, eval_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -127,7 +137,10 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
         global_best_path = os.path.join("search", search_pass_name, "global_best")
         merge_args = []
         for i in range(len(particle_paths)):
-            merge_args.append(([-1, 1], [os.path.join("search", search_pass_name, "particle_"+str(i), "now"), global_best_path], os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), gpus[assign_gpu(len(gpus), i, len(particle_paths))], fast_merge))
+            merge_args.append(([-1, 1], [os.path.join("search", search_pass_name, "particle_"+str(i), "now"), global_best_path], 
+            os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), 
+            gpus[assign_gpu(len(gpus), i, len(particle_paths))], fast_merge, seed
+            ))
         
         pool = Pool(processes=1)
         pool.starmap(lora_merge, merge_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -135,10 +148,13 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
         pool.join()
 
 # the main juice of the Model Swarms search: update velocity then update position of particles
-def particle_update(i, gpu_id, search_pass_name, weight_randomess, inertia, cognitive_coeff, social_coeff, repel_coeff, fast_merge, step_length, repel_term, restart_flag):
+def particle_update(i, gpu_id, search_pass_name, weight_randomess, inertia, cognitive_coeff, social_coeff, repel_coeff, fast_merge, step_length, repel_term, restart_flag, seed=None):
 
     # log_with_flush("particle "+str(i)+" update starting!")
-
+    if seed:
+        random.seed(seed)
+        torch.manual_seed(seed)
+    
     particle_path = os.path.join("search", search_pass_name, "particle_"+str(i))
     now_path = os.path.join(particle_path, "now")
     best_path = os.path.join(particle_path, "personal_best")
@@ -259,6 +275,7 @@ if __name__ == "__main__":
     argParser.add_argument("--dropK", default=0, help="dropout-K, 0-1") # for fig 9
     argParser.add_argument("--dropN", default=0, help="dropout-N, 0-1") # for fig 9
     argParser.add_argument("--dare_ties", default=0, help="whether to use DARE-TIES merging") # 0, 1
+    argParser.add_argument("--seed", default=42, help="random seed for reproducibility")
 
     args = argParser.parse_args()
     search_pass_name = args.name
@@ -282,6 +299,7 @@ if __name__ == "__main__":
     project_name_wb = args.project_name_wb
     populate_initial_experts = int(args.populate_initial_experts)
     use_dare_ties = int(args.dare_ties)
+    seed = int(args.seed)
 
     try:
         initial_experts_num = int(args.initial_experts_num)
@@ -326,11 +344,13 @@ if __name__ == "__main__":
     run = wandb.init(name=search_pass_name, project=project_name_wb)
     run.config.update(args)
     torch.multiprocessing.set_start_method('spawn')
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
+    if seed:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(42)
+        torch.cuda.manual_seed_all(seed)
+    torch.use_deterministic_algorithms(True)
 
     # Configure logging to write to a file
     logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
@@ -391,7 +411,8 @@ if __name__ == "__main__":
     if starting_test_set_eval:
         eval_test_args = []
         for i in range(len(particle_paths)):
-            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model))
+            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, 
+            dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed))
 
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -466,7 +487,9 @@ if __name__ == "__main__":
             else:
                 restart_flag = False
 
-            update_args.append((i, gpus[assign_gpu(len(gpus), i, len(particle_paths))], search_pass_name, weight_randomess, inertia, cognitive_coeff, social_coeff, repel_coeff, fast_merge, step_length, repel_term, restart_flag))
+            update_args.append((i, gpus[assign_gpu(len(gpus), i, len(particle_paths))], search_pass_name,
+                weight_randomess, inertia, cognitive_coeff, social_coeff, repel_coeff, 
+                fast_merge, step_length, repel_term, restart_flag, seed))
 
         pool = Pool(processes=num_cpu_when_merging)
         results = pool.starmap(particle_update, update_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -492,9 +515,15 @@ if __name__ == "__main__":
                 local_skip_flag = False
 
             if not correctness_emergence:
-                eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, False, None, global_skip_flag or local_skip_flag))
+                eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, 
+                dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, False, None, 
+                global_skip_flag or local_skip_flag, seed
+                ))
             else:
-                eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, True, None, global_skip_flag or local_skip_flag))
+                eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, 
+                dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, True, None, 
+                global_skip_flag or local_skip_flag, seed
+                ))
         
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate, eval_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -574,7 +603,9 @@ if __name__ == "__main__":
     # dev set evaluation for personal bests
     eval_args = []
     for i in range(len(particle_paths)):
-        eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), eval_type, dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, True))
+        eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), eval_type,
+        dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, True, None, False, seed
+        ))
 
     pool = Pool(processes=len(gpus))
     results = pool.starmap(evaluate, eval_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -584,7 +615,9 @@ if __name__ == "__main__":
     # test set evaluation
     eval_test_args = []
     for i in range(len(particle_paths)):
-        eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), eval_type, dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model))
+        eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), eval_type, 
+        dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed
+        ))
 
     pool = Pool(processes=len(gpus))
     results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -605,7 +638,7 @@ if __name__ == "__main__":
         dataset_1_name = perplexity_extrinsic_test_dict[dataset][0]
         eval_test_args = []
         for i in range(len(particle_paths)):
-            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_1_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model))
+            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_1_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed))
         
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -617,7 +650,7 @@ if __name__ == "__main__":
         dataset_2_name = perplexity_extrinsic_test_dict[dataset][1]
         eval_test_args = []
         for i in range(len(particle_paths)):
-            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_2_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model))
+            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_2_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed))
         
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -630,7 +663,7 @@ if __name__ == "__main__":
         dataset_1_name = perplexity_extrinsic_test_dict[dataset][0]
         eval_args = []
         for i in range(len(particle_paths)):
-            eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_1_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model))
+            eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_1_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed))
         
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate, eval_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -642,7 +675,7 @@ if __name__ == "__main__":
         dataset_2_name = perplexity_extrinsic_test_dict[dataset][1]
         eval_args = []
         for i in range(len(particle_paths)):
-            eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_2_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model))
+            eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_2_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed))
 
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate, eval_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))

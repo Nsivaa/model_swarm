@@ -39,5 +39,6 @@ do
         --repel_term 1 \
         --step_length_factor 0.95 \
         --restart_stray_particles 1 \
-        --restart_patience 0.67
+        --restart_patience 0.67 \
+        --to_visualize 1
 done
