@@ -11,7 +11,7 @@ initial_experts_full/
 initial_experts_mistral/
 !initial_experts/expert_init.py
 other_checkpoint/*
-*.sh
+.sh
 !search_concise.sh
 !search_legal.sh
 !search_nlgraph.sh
@@ -23,7 +23,6 @@ new/
 cbtm.py
 dare_ties.py
 data_merge.py
-evaluate_initial.py
 evolve.py
 greedy_soup.py
 model_stocks.py
@@ -42,6 +41,7 @@ prompt_variation.py
 trajectory.py
 dep.py
 best_checkpoints/*
+initial_eval/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
