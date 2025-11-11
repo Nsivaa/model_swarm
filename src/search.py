@@ -23,7 +23,7 @@ def log_with_flush(message, level=logging.INFO):
   logging.log(level, message)
   logging.getLogger().handlers[0].flush()
 
-def curret_time_string():
+def current_time_string():
     now = datetime.datetime.now()
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
     return current_time
@@ -332,7 +332,7 @@ if __name__ == "__main__":
     # create search directory
 
     if os.path.exists(os.path.join("search", search_pass_name)):
-        search_pass_name += curret_time_string().replace(" ", "_")
+        search_pass_name += current_time_string().replace(" ", "_")
         # exit("search directory already exists!")
     os.mkdir(os.path.join("search", search_pass_name))
 
@@ -398,7 +398,7 @@ if __name__ == "__main__":
         for i in range(len(particle_paths)):
             particle_trajectory[i] = []
 
-    log_with_flush("initializing search... "+curret_time_string())
+    log_with_flush("initializing search... "+current_time_string())
     initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode)
     log_with_flush("search initialized")
     for i in range(len(particle_paths)):
@@ -423,14 +423,14 @@ if __name__ == "__main__":
         for i in range(len(particle_paths)):
             log_with_flush("particle_"+str(i)+": "+str(results[i]))
 
-    log_with_flush("starting search... "+curret_time_string())
+    log_with_flush("starting search... "+current_time_string())
 
     # main search iteration
     iter_count = 0
     while iter_count < max_iteration:
         iter_count += 1
         log_with_flush("--------------------------")
-        log_with_flush("iteration "+str(iter_count)+"! "+curret_time_string())
+        log_with_flush("iteration "+str(iter_count)+"! "+current_time_string())
         log_with_flush("updating particles...")
         # patience and ending condition
         with open(os.path.join("search", search_pass_name, "utility_scratchpad.json")) as f:
@@ -495,7 +495,7 @@ if __name__ == "__main__":
         results = pool.starmap(particle_update, update_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
         pool.close()
         pool.join()
-        log_with_flush("all particles updated! "+curret_time_string())
+        log_with_flush("all particles updated! "+current_time_string())
 
         # evaluate each particle and update utility_scratchpad and weights
         log_with_flush("evaluating particles...")
@@ -580,7 +580,7 @@ if __name__ == "__main__":
         with open("search/"+search_pass_name+"/utility_scratchpad.json", "w") as f:
             json.dump(utility_scratchpad, f, indent=4)
         
-        log_with_flush("all particles evaluated! "+curret_time_string())
+        log_with_flush("all particles evaluated! "+current_time_string())
         log_with_flush("--------------------------")
 
         # step length update
@@ -589,7 +589,7 @@ if __name__ == "__main__":
     if to_visualize_flag:
         plot_particle_trajectories(search_pass_name, dataset)
 
-    log_with_flush("ending search and starting test set evaluation... "+curret_time_string())
+    log_with_flush("ending search and starting test set evaluation... "+current_time_string())
 
     # which particle is global best?
     with open("search/"+search_pass_name+"/utility_scratchpad.json", "r") as f:
@@ -721,4 +721,4 @@ if __name__ == "__main__":
             for aux in ["g_x", "p_x", "velocity", "x_w"]:
                 shutil.rmtree(os.path.join("search", search_pass_name, "particle_"+str(i), aux))
 
-    log_with_flush("the end of search... "+curret_time_string())
+    log_with_flush("the end of search... "+current_time_string())

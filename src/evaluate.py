@@ -118,7 +118,7 @@ def update_only_one_or_two(value):
     global ONLY_ONE_OR_TWO
     ONLY_ONE_OR_TWO = value
 
-def curret_time_string():
+def current_time_string():
     now = datetime.datetime.now()
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
     return current_time
