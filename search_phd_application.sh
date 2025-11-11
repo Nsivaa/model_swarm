@@ -29,7 +29,7 @@ do
         --starting_test_set_eval 1 \
         --fast_merge 1 \
         --project_name_wb human_sweep \
-        --weight_randomess 1 \
+        --weight_randomness 1 \
         --populate_initial_experts 1 \
         --initial_experts_num 20 \
         --starting_velocity_mode random \

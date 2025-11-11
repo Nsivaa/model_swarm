@@ -148,7 +148,7 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
         pool.join()
 
 # the main juice of the Model Swarms search: update velocity then update position of particles
-def particle_update(i, gpu_id, search_pass_name, weight_randomess, inertia, cognitive_coeff, social_coeff, repel_coeff, fast_merge, step_length, repel_term, restart_flag, seed=None):
+def particle_update(i, gpu_id, search_pass_name, weight_randomness, inertia, cognitive_coeff, social_coeff, repel_coeff, fast_merge, step_length, repel_term, restart_flag, seed=None):
 
     # log_with_flush("particle "+str(i)+" update starting!")
     if seed:
@@ -165,7 +165,7 @@ def particle_update(i, gpu_id, search_pass_name, weight_randomess, inertia, cogn
         lora_merge([0], [now_path], velocity_path, gpu_id, fast_merge)
 
     # weight randomness
-    if weight_randomess == 1:
+    if weight_randomness == 1:
         r_w = random.uniform(0, 1)
         r_p = random.uniform(0, 1)
         r_s = random.uniform(0, 1)
@@ -254,7 +254,7 @@ if __name__ == "__main__":
     argParser.add_argument("--dropout_rate", default = 0.3, help="dropout rate for DARE merging")
     argParser.add_argument("-p", "--patience", default = 10, help="patience of the search")
     argParser.add_argument("-m", "--max_iteration", default = 200, help="max iteration of the search")
-    argParser.add_argument("--weight_randomess", default = 1, help="whether to use weight randomess") # 0, 1
+    argParser.add_argument("--weight_randomness", default = 1, help="whether to use weight randomess") # 0, 1
     argParser.add_argument("-i", "--initial_expert_directory", default="./initial_experts", help="initial expert directory") # make it a directory of initial expert checkpoints, see initial_experts/ for example
     argParser.add_argument("-b", "--base_model", default="google/gemma-7b-it", help="base model of the lora experts")
     argParser.add_argument("--starting_test_set_eval", default=0, help="starting test set evaluation") # 0, 1
@@ -291,7 +291,7 @@ if __name__ == "__main__":
     step_length = float(args.step_length)
     dropout_rate = float(args.dropout_rate)
     max_iteration = int(args.max_iteration)
-    weight_randomess = int(args.weight_randomess)
+    weight_randomness = int(args.weight_randomness)
     initial_expert_directory = args.initial_expert_directory
     base_model = args.base_model
     starting_test_set_eval = int(args.starting_test_set_eval)
@@ -398,7 +398,7 @@ if __name__ == "__main__":
         for i in range(len(particle_paths)):
             particle_trajectory[i] = []
 
-    log_with_flush("initializing search... "+current_time_string())
+    log_with_flush("initializing search... " + current_time_string())
     initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode)
     log_with_flush("search initialized")
     for i in range(len(particle_paths)):
@@ -488,7 +488,7 @@ if __name__ == "__main__":
                 restart_flag = False
 
             update_args.append((i, gpus[assign_gpu(len(gpus), i, len(particle_paths))], search_pass_name,
-                weight_randomess, inertia, cognitive_coeff, social_coeff, repel_coeff, 
+                weight_randomness, inertia, cognitive_coeff, social_coeff, repel_coeff, 
                 fast_merge, step_length, repel_term, restart_flag, seed))
 
         pool = Pool(processes=num_cpu_when_merging)
