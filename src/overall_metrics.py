@@ -322,7 +322,7 @@ def plot_particle_trajectories(search_pass_name, dataset):
     plt.tight_layout()
 
     # Save plot
-    save_path = os.path.join("search", search_pass_name, f"{dataset}_trajectory.png")
+    save_path = os.path.join("search", search_pass_name, f"{search_pass_name}_trajectory.png")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
