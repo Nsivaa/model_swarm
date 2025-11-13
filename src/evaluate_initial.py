@@ -1,5 +1,4 @@
 from evaluate import evaluate_test
-from overall_metrics import overall_metrics
 from merge import lora_merge, dare_ties_merge
 from multiprocessing import Pool
 from search import assign_gpu, log_with_flush, current_time_string
@@ -13,8 +12,201 @@ import shutil
 import os
 import math
 
+def overall_metrics_init(name, eval_type, top_k = 10):
+
+    final_metrics = {}
+
+    particle_paths = os.listdir(os.path.join("initial_eval", name))
+
+    if eval_type == "multiple_choice" or eval_type == "AbstainQA" or eval_type == "multitask":
+        
+        golds = None
+        starting_preds = []
+        starting_utility = []
+
+        ending_preds = []
+        ending_utility = []
+
+        # for particle_path in particle_paths:
+        #     if "particle" in particle_path:
+        for i in range(len(particle_paths)):
+            if "particle_" + str(i) in particle_paths:
+                particle_path = "particle_" + str(i)
+                with open(os.path.join("initial_eval", name, particle_path, "personal_best/preds.json"), "r") as f:
+                    particle_data = json.load(f)
+                    ending_preds.append(particle_data)
+                with open(os.path.join("initial_eval", name, particle_path, "personal_best/golds.json"), "r") as f:
+                    gold_data = json.load(f)
+                    if golds and not eval_type == "AbstainQA":
+                        assert golds == gold_data
+                    else:
+                        golds = gold_data
+        
+        with open(os.path.join("initial_eval", name, "utility_scratchpad.json"), "r") as f:
+            utility_data = json.load(f)
+            for i in range(len(particle_paths)):
+                if "particle_" + str(i) in particle_paths:
+                    particle_path = "particle_" + str(i)
+                    ending_utility.append(utility_data[particle_path + "_best"])
+
+        starting_eval_flag = True
+        try:
+            for i in range(len(particle_paths)):
+                if "particle_" + str(i) in particle_paths:
+                    particle_path = "particle_" + str(i)
+                    with open(os.path.join("initial_eval", name, particle_path, "now/preds.json"), "r") as f:
+                        particle_data = json.load(f)
+                        starting_preds.append(particle_data)
+                    with open(os.path.join("initial_eval", name, particle_path, "now/golds.json"), "r") as f:
+                        gold_data = json.load(f)
+                        if golds and not eval_type == "AbstainQA":
+                            assert golds == gold_data
+                        else:
+                            golds = gold_data
+            
+            with open(os.path.join("initial_eval", name, "utility_scratchpad.json"), "r") as f:
+                utility_data = json.load(f)
+                for i in range(len(particle_paths)):
+                    if "particle_" + str(i) in particle_paths:
+                        particle_path = "particle_" + str(i)
+                        starting_utility.append(utility_data[particle_path + "_history"][0])
+        except:
+            print("no starting eval! starting will be the same as ending")
+            starting_eval_flag = False
+            starting_utility = ending_utility
+            starting_preds = ending_preds
+
+        assert len(starting_preds) == len(starting_utility) == len(ending_preds) == len(ending_utility)
+        assert len(golds) == len(starting_preds[0]) == len(ending_preds[0])
+
+        final_starting_preds = ensemble_based_on_utility(starting_preds, starting_utility, top_k)
+        final_ending_preds = ensemble_based_on_utility(ending_preds, ending_utility, top_k)
+
+        assert len(final_starting_preds) == len(final_ending_preds)
+
+        starting_best_utility_index = starting_utility.index(max(starting_utility))
+        ending_best_utility_index = ending_utility.index(max(ending_utility))
+
+        if starting_eval_flag:
+
+            final_metrics["starting_best_validation_utility"] = max(starting_utility)
+            final_metrics["starting_best_particle_on_validation"] = starting_best_utility_index
+            final_metrics["starting_best_single_test_accuracy"] = accuracy_score(golds, starting_preds[starting_best_utility_index])
+            final_metrics["starting_top-k_ensemble_test_accuracy"] = accuracy_score(golds, final_starting_preds)
+
+            print("starting best validation utility: ", max(starting_utility))
+            print("starting best particle on validation: ", starting_best_utility_index)
+            print("starting best single test accuracy: ", accuracy_score(golds, starting_preds[starting_best_utility_index]))
+            print("starting top-k ensemble test accuracy: ", accuracy_score(golds, final_starting_preds))
+
+        final_metrics["ending_best_validation_utility"] = max(ending_utility)
+        final_metrics["ending_best_particle_on_validation"] = ending_best_utility_index
+        final_metrics["ending_best_single_test_accuracy"] = accuracy_score(golds, ending_preds[ending_best_utility_index])
+        final_metrics["ending_top-k_ensemble_test_accuracy"] = accuracy_score(golds, final_ending_preds)
+
+        print("ending best validation utility: ", max(ending_utility))
+        print("ending best particle on validation: ", ending_best_utility_index)
+        print("ending best single test accuracy: ", accuracy_score(golds, ending_preds[ending_best_utility_index]))
+        print("ending top-k ensemble test accuracy: ", accuracy_score(golds, final_ending_preds))
+    
+    elif eval_type == "exact_match" or eval_type == "external_api" or eval_type == "perplexity" or eval_type == "rm_default" or eval_type == "rm_concise" or eval_type == "rm_verbose" or eval_type == "human":
+        starting_scores = []
+        starting_utility = []
+        ending_scores = []
+        ending_utility = []
+
+        for i in range(len(particle_paths)):
+            if "particle_" + str(i) in particle_paths:
+                particle_path = "particle_" + str(i)
+                with open(os.path.join("initial_eval", name, particle_path, "personal_best/scores.json"), "r") as f:
+                    particle_data = json.load(f)
+                    ending_scores.append(particle_data)
+        
+        with open(os.path.join("initial_eval", name, "utility_scratchpad.json"), "r") as f:
+            utility_data = json.load(f)
+            for i in range(len(particle_paths)):
+                if "particle_" + str(i) in particle_paths:
+                    particle_path = "particle_" + str(i)
+                    ending_utility.append(utility_data[particle_path + "_best"])
+
+        starting_eval_flag = True
+        try:
+            for i in range(len(particle_paths)):
+                if "particle_" + str(i) in particle_paths:
+                    particle_path = "particle_" + str(i)
+                    with open(os.path.join("initial_eval", name, particle_path, "now/scores.json"), "r") as f:
+                        particle_data = json.load(f)
+                        starting_scores.append(particle_data)
+            
+            with open(os.path.join("initial_eval", name, "utility_scratchpad.json"), "r") as f:
+                utility_data = json.load(f)
+                for i in range(len(particle_paths)):
+                    if "particle_" + str(i) in particle_paths:
+                        particle_path = "particle_" + str(i)
+                        starting_utility.append(utility_data[particle_path + "_history"][0])
+        except:
+            print("no starting eval! starting will be the same as ending")
+            starting_eval_flag = False
+            starting_utility = ending_utility
+            starting_scores = ending_preds
+        
+        assert len(starting_scores) == len(starting_utility) == len(ending_scores) == len(ending_utility)
+
+        starting_best_utility_index = starting_utility.index(max(starting_utility))
+        ending_best_utility_index = ending_utility.index(max(ending_utility))
+
+        if starting_eval_flag:
+
+            final_metrics["starting_best_validation_utility"] = max(starting_utility)
+            final_metrics["starting_best_particle_on_validation"] = starting_best_utility_index
+            final_metrics["starting_best_single_test_accuracy"] = sum(starting_scores[starting_best_utility_index]) / len(starting_scores[starting_best_utility_index])
+            if eval_type == "exact_match" or eval_type == "rm_default" or eval_type == "rm_concise" or eval_type == "rm_verbose" or eval_type == "human":
+                temp_scores = ensemble_based_on_utility(starting_scores, starting_utility, top_k)
+                final_metrics["starting_top-k_ensemble_test_accuracy"] = sum(temp_scores) / len(temp_scores)
+            elif eval_type == "external_api":
+                top_k_utility_bar = sorted(starting_utility, reverse=True)[:top_k]
+                retained_scores_list = []
+                for i in range(len(starting_scores)):
+                    if starting_utility[i] in top_k_utility_bar:
+                        retained_scores_list.append(starting_scores[i])
+                # average the scores
+                final_metrics["starting_top-k_ensemble_test_accuracy"] = avg([sum(x) / len(x) for x in retained_scores_list])
+                final_metrics["starting_top-k_ensemble_test_accuracy"] = avg([sum(x) / len(x) for x in retained_scores_list])
+            elif eval_type == "perplexity":
+                final_metrics["starting_top-k_ensemble_test_accuracy"] = None
+
+            print("starting best validation utility: ", final_metrics["starting_best_validation_utility"])
+            print("starting best particle on validation: ", starting_best_utility_index)
+            print("starting best single test accuracy: ", final_metrics["starting_best_single_test_accuracy"])
+            print("starting top-k ensemble test accuracy: ", final_metrics["starting_top-k_ensemble_test_accuracy"])
+
+        final_metrics["ending_best_validation_utility"] = max(ending_utility)
+        final_metrics["ending_best_particle_on_validation"] = ending_best_utility_index
+        final_metrics["ending_best_single_test_accuracy"] = sum(ending_scores[ending_best_utility_index]) / len(ending_scores[ending_best_utility_index])
+        if eval_type == "exact_match" or eval_type == "rm_default" or eval_type == "rm_concise" or eval_type == "rm_verbose" or eval_type == "human":
+            temp_scores = ensemble_based_on_utility(ending_scores, ending_utility, top_k)
+            final_metrics["ending_top-k_ensemble_test_accuracy"] = sum(temp_scores) / len(temp_scores)
+        elif eval_type == "external_api":
+            top_k_utility_bar = sorted(ending_utility, reverse=True)[:top_k]
+            retained_scores_list = []
+            for i in range(len(ending_scores)):
+                if ending_utility[i] in top_k_utility_bar:
+                    retained_scores_list.append(ending_scores[i])
+            # average the scores
+            final_metrics["ending_top-k_ensemble_test_accuracy"] = avg([sum(x) / len(x) for x in retained_scores_list])
+            final_metrics["ending_top-k_ensemble_test_accuracy"] = avg([sum(x) / len(x) for x in retained_scores_list])
+        elif eval_type == "perplexity":
+            final_metrics["ending_top-k_ensemble_test_accuracy"] = None
+        # final_metrics["ending_top-k_ensemble_test_accuracy"] = accuracy_score(golds, final_ending_preds)
+
+        print("ending best validation utility: ", final_metrics["ending_best_validation_utility"])
+        print("ending best particle on validation: ", final_metrics["ending_best_particle_on_validation"])
+        print("ending best single test accuracy: ", final_metrics["ending_best_single_test_accuracy"])
+        print("ending top-k ensemble test accuracy: ", final_metrics["ending_top-k_ensemble_test_accuracy"])
+
+    return final_metrics
+
 def initialize_eval_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge):
-    os.mkdir(os.path.join("initial_eval", search_pass_name, "tmp"))
     for i in range(len(particle_paths)):
         os.mkdir(os.path.join("initial_eval", search_pass_name, "particle_"+str(i)))
         os.mkdir(os.path.join("initial_eval", search_pass_name, "particle_"+str(i), "now"))
@@ -23,7 +215,7 @@ def initialize_eval_records(search_pass_name, particle_paths, eval_type, dataset
 if __name__ == "__main__":
 
     argParser = argparse.ArgumentParser()
-    argParser.add_argument("-n", "--name", help="name of this model swarms search, also directory name in search/")
+    argParser.add_argument("-n", "--name", help="name of this model swarms search, also directory name in initial_eval/")
     argParser.add_argument("-e", "--eval_type", help="evaluation types") # multiple_choice, exact_match, multitask, rm_default, rm_verbose, rm_concise, human
     argParser.add_argument("-d", "--dataset", help="dataset as the search objective/evaluation") # file names in data/eval, be mindful of using the right --eval_type
     argParser.add_argument("-g", "--gpus", help="available gpu ids in a string") # such as 0,1,2,3,4
@@ -125,7 +317,7 @@ if __name__ == "__main__":
 
     if os.path.exists(os.path.join("initial_eval", search_pass_name, "tmp")):
         shutil.rmtree(os.path.join("initial_eval", search_pass_name, "tmp"))
-        
+
     eval_test_args = []
     for i in range(len(particle_paths)):
         eval_test_args.append((os.path.join("initial_eval", search_pass_name, "particle_"+str(i), "now"), eval_type, 
@@ -140,6 +332,6 @@ if __name__ == "__main__":
     for i in range(len(particle_paths)):
         log_with_flush("particle_"+str(i)+": "+str(results[i]))
 
-    final_metrics = overall_metrics(search_pass_name, eval_type)
+    final_metrics = overall_metrics_init(search_pass_name, eval_type)
     wandb.log(final_metrics)
     log_with_flush("final metrics for test: "+str(final_metrics))
