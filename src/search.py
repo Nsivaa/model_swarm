@@ -257,7 +257,7 @@ if __name__ == "__main__":
     argParser.add_argument("--weight_randomness", default = 1, help="whether to use weight randomess") # 0, 1
     argParser.add_argument("-i", "--initial_expert_directory", default="./initial_experts", help="initial expert directory") # make it a directory of initial expert checkpoints, see initial_experts/ for example
     argParser.add_argument("-b", "--base_model", default="google/gemma-7b-it", help="base model of the lora experts")
-    argParser.add_argument("--starting_test_set_eval", default=0, help="starting test set evaluation") # 0, 1
+    argParser.add_argument("--starting_test_set_eval", default=1, help="starting test set evaluation") # 0, 1
     argParser.add_argument("--fast_merge", default=1, help="whether to use fast merge by only loading the safetensor file") # just keep it 1 unless you absolutely know what you're doing
     argParser.add_argument("--project_name_wb", default="swarm", help="wandb project name") # as you wish
     argParser.add_argument("--populate_initial_experts", default=0, help="whether to populate initial experts") # 0, 1
@@ -270,7 +270,7 @@ if __name__ == "__main__":
     argParser.add_argument("--restart_patience", default=0.5, help="restart patience * patience = when to restart particles")
     argParser.add_argument("--clean_up_on_end", default=1, help="whether to clean up on end") # 0, 1
     argParser.add_argument("--only_one_or_two", default=None, help="whether to only optimize with dataset 1 or 2 in multitask") # safely ignore this
-    argParser.add_argument("--to_visualize", default=False, help="whether to visualize the search process") # 0, 1, for Fig 8
+    argParser.add_argument("--to_visualize", default=True, help="whether to visualize the search process") # 0, 1, for Fig 8
     argParser.add_argument("--correctness_emergence", default=False, help="whether to track correctness changes wrt iteration") # 0, 1, for Fig 2
     argParser.add_argument("--dropK", default=0, help="dropout-K, 0-1") # for fig 9
     argParser.add_argument("--dropN", default=0, help="dropout-N, 0-1") # for fig 9
