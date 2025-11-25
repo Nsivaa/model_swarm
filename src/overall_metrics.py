@@ -313,9 +313,7 @@ def plot_particle_trajectories(search_pass_name, dataset):
         plt.scatter(x[0], y[0], color='red', marker='*', s=70, edgecolors='none')
         plt.scatter(x[-1], y[-1], color='green', marker='o', s=50, edgecolors='none')
 
-    plt.title(f"{dataset} Trajectory", fontsize=13)
-    plt.xlabel("Weight 1")
-    plt.ylabel("Weight 2")
+    plt.title(f"{search_pass_name}_trajectory", fontsize=13)
     plt.grid(False)
     plt.axhline(0, color='black', lw=0.5, alpha=0.3)
     plt.axvline(0, color='black', lw=0.5, alpha=0.3)
