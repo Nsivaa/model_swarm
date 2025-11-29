@@ -553,7 +553,7 @@ def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-
         return get_effective_reliability(correct_flags, abstain_flags)
 
 # evaluation on the test set, similar to the dev set evaluation, but kept seperate in case the test eval might be dratiscally different from dev in generalization settings
-def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-7b-it", only_one_or_two = None, obj4_save_generation=False, seed=None):
+def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-7b-it", only_one_or_two = None, obj4_save_generation=False, seed=None, evaluation_mode=False):
 
     if seed:
         random.seed(seed)
@@ -581,7 +581,8 @@ def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/g
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
 
-    # model.eval()
+    if evaluation_mode:
+        model.eval()
 
     # prompt = "What is the capital of France? Answer:"
     # input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to("cuda")

@@ -275,7 +275,8 @@ if __name__ == "__main__":
     argParser.add_argument("--dropK", default=0, help="dropout-K, 0-1") # for fig 9
     argParser.add_argument("--dropN", default=0, help="dropout-N, 0-1") # for fig 9
     argParser.add_argument("--dare_ties", default=0, help="whether to use DARE-TIES merging") # 0, 1
-    argParser.add_argument("--seed", default=42, help="random seed for reproducibility")
+    argParser.add_argument("--seed", default=52, help="random seed for reproducibility")
+    argParser.add_argument("--eval", default=0, help="whether to set the model to evaluation mode") # 0, 1
 
     args = argParser.parse_args()
     search_pass_name = args.name
@@ -300,6 +301,7 @@ if __name__ == "__main__":
     populate_initial_experts = int(args.populate_initial_experts)
     use_dare_ties = int(args.dare_ties)
     seed = int(args.seed)
+    evaluation_mode = bool(int(args.eval))
 
     try:
         initial_experts_num = int(args.initial_experts_num)
@@ -412,7 +414,7 @@ if __name__ == "__main__":
         eval_test_args = []
         for i in range(len(particle_paths)):
             eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, 
-            dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed))
+            dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed, evaluation_mode))
 
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -616,7 +618,7 @@ if __name__ == "__main__":
     eval_test_args = []
     for i in range(len(particle_paths)):
         eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), eval_type, 
-        dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed
+        dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed, evaluation_mode
         ))
 
     pool = Pool(processes=len(gpus))
@@ -638,7 +640,7 @@ if __name__ == "__main__":
         dataset_1_name = perplexity_extrinsic_test_dict[dataset][0]
         eval_test_args = []
         for i in range(len(particle_paths)):
-            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_1_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed))
+            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_1_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed, evaluation_mode))
         
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
@@ -650,7 +652,7 @@ if __name__ == "__main__":
         dataset_2_name = perplexity_extrinsic_test_dict[dataset][1]
         eval_test_args = []
         for i in range(len(particle_paths)):
-            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_2_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed))
+            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best"), "multiple_choice", dataset_2_name, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed, evaluation_mode))
         
         pool = Pool(processes=len(gpus))
         results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
