@@ -62,7 +62,7 @@ def ensemble_based_on_utility(preds, utility_list, top_k):
     return final_preds
 
 # calculate a bunch of metrics for a given search to report at the end
-def overall_metrics(name, eval_type, top_k = 10):
+def overall_metrics(name, eval_type, top_k = 10, initial_experts_num = 10):
 
     final_metrics = {}
 
@@ -138,7 +138,19 @@ def overall_metrics(name, eval_type, top_k = 10):
         ending_best_utility_index = ending_utility.index(max(ending_utility))
 
         if starting_eval_flag:
+            # compute best single accuracy among the first 10 particles. This assumes the first 10 are the initial experts
+            best_single_validation_best = -float("inf")
+            best_single = 0.0
+            best_single_index = -1
+            for i in range(initial_experts_num):
+                val_util = starting_utility[i]
+                if val_util > best_single_validation_best:
+                    best_single_validation_best = val_util
+                    best_single = accuracy_score(golds, starting_preds[i])
+                    best_single_index = i
 
+            final_metrics["best_single"] = best_single
+            final_metrics["best_single_index"] = best_single_index
             final_metrics["starting_best_validation_utility"] = max(starting_utility)
             final_metrics["starting_best_particle_on_validation"] = starting_best_utility_index
             final_metrics["starting_best_single_test_accuracy"] = accuracy_score(golds, starting_preds[starting_best_utility_index])

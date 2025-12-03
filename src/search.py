@@ -275,7 +275,7 @@ if __name__ == "__main__":
     argParser.add_argument("--dropK", default=0, help="dropout-K, 0-1") # for fig 9
     argParser.add_argument("--dropN", default=0, help="dropout-N, 0-1") # for fig 9
     argParser.add_argument("--dare_ties", default=0, help="whether to use DARE-TIES merging") # 0, 1
-    argParser.add_argument("--seed", default=52, help="random seed for reproducibility")
+    argParser.add_argument("--seed", default=42, help="random seed for reproducibility")
     argParser.add_argument("--eval", default=0, help="whether to set the model to evaluation mode") # 0, 1
 
     args = argParser.parse_args()
@@ -630,7 +630,7 @@ if __name__ == "__main__":
     for i in range(len(particle_paths)):
         log_with_flush("particle_"+str(i)+": "+str(results[i]))
 
-    final_metrics = overall_metrics(search_pass_name, eval_type)
+    final_metrics = overall_metrics(search_pass_name, eval_type, initial_experts_num = len(particle_paths))
 
     if eval_type == "AbstainQA":
         best_particle_idx = final_metrics["ending_best_particle_on_validation"]
