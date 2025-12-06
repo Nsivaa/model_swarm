@@ -1,5 +1,5 @@
 
-def es_optimize(model, lora_name, pop_size = 30, sigma = 0.001, lr = 5e-4, seed = 42):
+def es_optimize(lora_name, pop_size = 30, sigma = 0.001, lr = 5e-4, seed = 42, eval_type, dataset, gpus):
     """
     
     Generate a new LoRA adapter by applying Evolution Strategies.
@@ -7,11 +7,12 @@ def es_optimize(model, lora_name, pop_size = 30, sigma = 0.001, lr = 5e-4, seed 
     and updates the original adapter weights based on the performance.
 
     Args:
-        model: The base model to apply the LoRA adapter to.
         lora_name (str): Path to the LoRA adapter.
-        n (int): Number of perturbations.
+        pop_size (int): Population size.
         sigma (float): Standard deviation of the Gaussian noise.
-        alpha (float): Learning rate for updating the adapter.
+        lr (float): Learning rate for updating the adapter.
+        seed (int): Seed.
+
     Returns:
         new_lora_state_dict: The state dict of the new LoRA adapter.
     """
@@ -19,20 +20,32 @@ def es_optimize(model, lora_name, pop_size = 30, sigma = 0.001, lr = 5e-4, seed 
     # seed everything
     torch.manual_seed(seed)
     random.seed(seed)
-
-    # load the original LoRA adapter
-    original_state_dict = load_file(os.path.join(lora_name, "adapter_model.safetensors"), device="cpu")
     perturbation_seeds = []
+    rewards = []
     # generate population of perturbed adapters
-    for i in range(pop_size):
+    for _ in range(pop_size):
+        # load the original LoRA adapter
+        state_dict = load_file(os.path.join(lora_name, "adapter_model.safetensors"), device="cpu")
         pert_seed = random.randint(0, 1e6)
         perturbation_seeds.append(pert_seed)
-        perturbed_state_dicts = []
         # seed the perturbation
         random.seed(pert_seed)
-        for key in original_state_dict.keys():
-            noise = torch.randn_like(original_state_dict[key]) * sigma
-            perturbed_state_dicts.append(original_state_dict[key] + noise)
+        # apply the perturbation in place
+        for v in state_dict.values():
+            noise = torch.randn_like(v) * sigma
+            v += noise
+        # evaluate the perturbed adapter
+        set_peft_model_state_dict(model, state_dict) # 
+        eval_args = [lora_name, eval_type, dataset, gpu_id]
+        pool = Pool(processes=len(gpus))
+        reward = pool.starmap(evaluate, eval_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
+        pool.close()
+        pool.join()
+        rewards.append(reward)
+        # reload the original adapter for the next perturbation
+        state_dict = load_file(os.path.join(lora_name, "adapter_model.safetensors"), device="cpu")
+
+    for i in range(pop_size):
     # generate the optimized adapter applying the weights
     final_state_dict = {}
     for i in range(len(lora_state_dict_list)):
