@@ -11,7 +11,7 @@ initial_experts_full/
 initial_experts_mistral/
 !initial_experts/expert_init.py
 other_checkpoint/*
-.sh
+*.sh
 !search_concise.sh
 !search_legal.sh
 !search_nlgraph.sh
@@ -19,6 +19,7 @@ other_checkpoint/*
 *.yml
 !swarm.yml
 *.txt
+!requirements.txt
 new/
 cbtm.py
 dare_ties.py
