@@ -17,6 +17,10 @@ import vertexai
 import warnings
 import traceback
 from vertexai.generative_models import GenerativeModel, GenerationConfig, SafetySetting, HarmCategory, HarmBlockThreshold
+from dotenv import load_dotenv
+import os 
+
+load_dotenv()  
 
 ICL_PROMPT = None
 model = None
@@ -24,6 +28,7 @@ tokenizer = None
 # provide your own perspective API key through google cloud
 PERSPECTIVE_API_KEY = None
 perspective_already_warned = False
+CACHE_DIR = os.getenv("CACHE_DIR")
 
 try:
     client = discovery.build(
@@ -271,14 +276,14 @@ def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-
     global tokenizer
     only_one_or_two = ONLY_ONE_OR_TWO
     try:
-        model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.float16)
+        model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.float16, cache_dir=CACHE_DIR)
         model.load_adapter(model_path)
         model.to(f"cuda:{gpu_id}")
         tokenizer = AutoTokenizer.from_pretrained(base_model)
     except:
         del model
         del tokenizer
-        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16)
+        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, cache_dir=CACHE_DIR)
         model.to(f"cuda:{gpu_id}")
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
@@ -569,14 +574,14 @@ def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/g
     only_one_or_two = ONLY_ONE_OR_TWO
 
     try:
-        model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.float16)
+        model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.float16, cache_dir=CACHE_DIR)
         model.load_adapter(model_path)
         model.to(f"cuda:{gpu_id}")
-        tokenizer = AutoTokenizer.from_pretrained(base_model)
+        tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=CACHE_DIR)
     except:
         del model
         del tokenizer
-        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16)
+        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, cache_dir=CACHE_DIR)
         model.to(f"cuda:{gpu_id}")
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token

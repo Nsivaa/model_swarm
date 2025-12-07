@@ -12,10 +12,6 @@ initial_experts_mistral/
 !initial_experts/expert_init.py
 other_checkpoint/*
 *.sh
-!search_concise.sh
-!search_legal.sh
-!search_nlgraph.sh
-!search_phd_application.sh
 *.yml
 !swarm.yml
 *.txt
@@ -43,6 +39,7 @@ trajectory.py
 dep.py
 best_checkpoints/*
 initial_eval/*
+es-fine-tuning-paper/.venv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
