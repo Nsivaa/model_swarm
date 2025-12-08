@@ -13,7 +13,7 @@ from queue import Queue
 from concurrent.futures import ThreadPoolExecutor
 import math
 import gc
-import tqdm.tqdm as tqdm
+from tqdm import tqdm 
 
 logging.set_verbosity_error()
 torch.backends.cuda.matmul.allow_tf32 = True
