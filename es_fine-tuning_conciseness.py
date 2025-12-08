@@ -24,17 +24,23 @@ parser.add_argument('--hf_cache_dir', type=str, default='/scratch/a.dicembre/.hf
 parser.add_argument('--precision', type=str, default='bf16')
 parser.add_argument('--gpu_threads', type=int, default=4, help='Number of parallel threads per GPU')
 parser.add_argument('--verbose', action='store_true', help='Print verbose logs')
+parser.add_argument('--num_iterations', type=int, default=10, help='Number of ES iterations')
+parser.add_argument('--population_size', type=int, default=30, help='Population size for ES')
+parser.add_argument('--sigma', type=float, default=0.001, help='Standard deviation for weight perturbations')
+parser.add_argument('--alpha', type=float, default=0.0005, help='Learning rate for ES')
+parser.add_argument('--max_new_tokens', type=int, default=100, help='Maximum number of tokens to generate')
+parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
 args = parser.parse_args()
 
 
 # Hyperparameters for ES
-NUM_ITERATIONS = 10             # Number of ES iterations (generations)
-POPULATION_SIZE = 30              # Population size (number of perturbations per iteration)
-SIGMA = 0.001                     # Standard deviation for weight perturbations (noise scale)
-ALPHA = 0.0005                    # Learning rate
-max_new_tokens = 100              # Maximum number of tokens allowed to be generated
+NUM_ITERATIONS = args.num_iterations             # Number of ES iterations (generations)
+POPULATION_SIZE = args.population_size              # Population size (number of perturbations per iteration)
+SIGMA = args.sigma                     # Standard deviation for weight perturbations (noise scale)
+ALPHA = args.alpha                  # Learning rate
+max_new_tokens = args.max_new_tokens              # Maximum number of tokens allowed to be generated
 do_sample = False                 # Whether sampling is allowed in generating tokens, default to be not allowed (greedy decoding for ES)
-initial_seed = 33                 # Initial random seed
+initial_seed = args.seed                 # Initial random seed
 
 
 # --- Dummy Dataset and Reward Function ---
