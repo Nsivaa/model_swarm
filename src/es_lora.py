@@ -16,7 +16,7 @@ import gc
 from tqdm import tqdm 
 from evaluate import evaluate
 from peft import LoraConfig, PeftModel, get_peft_model
-from search import log_with_flush
+from safetensors.torch import load_file, save_file
 
 logging.set_verbosity_error()
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -35,7 +35,7 @@ def force_memory_cleanup():
 
 def process_seed(seed_args):
     """Function to process a single seed, used for thread pool"""
-    seed_idx, seed, lora_path, eval_type, dataset, gpu_id, accelerator, thread_id, verbose = seed_args
+    seed_idx, seed, SIGMA, lora_path, eval_type, dataset, gpu_id, accelerator, thread_id, verbose = seed_args
 
     if verbose:
         print(f"Process {accelerator.process_index} Thread {thread_id} processing seed {seed_idx} (value: {seed} lora_path: {lora_path})")
@@ -80,16 +80,16 @@ def process_seed(seed_args):
 # --- Main Evolution Strategies Loop ---
 def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-it", 
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005,
-             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False):
+             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1):
 
     accelerator = Accelerator()
     if accelerator.is_main_process:
-        print(f"Total processes: {accelerator.num_processes}, GPU threads per process: {args.gpu_threads}")
+        print(f"Total processes: {accelerator.num_processes}, GPU threads per process: {gpu_threads}")
         print(f"Population size: {POPULATION_SIZE}, Iterations: {NUM_ITERATIONS}")
         print(f"Sigma: {SIGMA}, Alpha: {ALPHA}")
 
     lora_list = []
-    for _ in range(args.gpu_threads):
+    for _ in range(gpu_threads):
         lora_list.append(lora_path)
 
     # Record total training start time
@@ -126,7 +126,7 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
 
         # Process seeds in smaller batches to reduce memory pressure
         local_rewards = []
-        batch_size = max(1, min(args.gpu_threads, len(local_seeds)))
+        batch_size = max(1, min(gpu_threads, len(local_seeds)))
 
         for batch_start in range(0, len(local_seeds), batch_size):
             batch_end = min(batch_start + batch_size, len(local_seeds))
@@ -136,7 +136,7 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
                 # Prepare thread arguments
                 thread_args = []
                 for thread_id, (seed_idx, seed) in enumerate(batch_seeds):
-                    thread_args.append((seed_idx, seed, lora_list[thread_id], eval_type, dataset, gpu_id, accelerator, thread_id, verbose))
+                    thread_args.append((seed_idx, seed, SIGMA, lora_list[thread_id], eval_type, dataset, gpu_id, accelerator, thread_id, verbose))
 
                 # Execute in parallel and collect results
                 results = list(executor.map(process_seed, thread_args))

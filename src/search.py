@@ -18,6 +18,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig
+from es_lora import es_lora
+
 
 def log_with_flush(message, level=logging.INFO):
   logging.log(level, message)
@@ -34,7 +36,7 @@ def assign_gpu(num_gpus, process_idx, total_processes):
     return gpu_idx
 
 # initialize a directory in search/ for the Model Swarms search
-def initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode):
+def initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode, seed=None):
     for i in range(len(particle_paths)):
         os.mkdir(os.path.join("search", search_pass_name, "particle_"+str(i)))
         for checkpoint_type in ["personal_best", "now", "velocity"]:
@@ -401,7 +403,7 @@ if __name__ == "__main__":
             particle_trajectory[i] = []
 
     log_with_flush("initializing search... " + current_time_string())
-    initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode)
+    initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode, seed)
     log_with_flush("search initialized")
     for i in range(len(particle_paths)):
         log_with_flush("expert " + str(i) + ": " + particle_paths[i])

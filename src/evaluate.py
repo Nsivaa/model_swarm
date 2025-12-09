@@ -63,7 +63,7 @@ try:
     generationConfig = GenerationConfig(temperature=0, max_output_tokens=20)
 except:
     if not vertex_already_warned:
-        warnings.warn("Ignore this if not running objective 4: human preferences: provide your own project_id for Vertex AI API access. Check out line 49.")
+        # warnings.warn("Ignore this if not running objective 4: human preferences: provide your own project_id for Vertex AI API access. Check out line 49.")
         vertex_already_warned = True
 
 ONLY_ONE_OR_TWO = None
