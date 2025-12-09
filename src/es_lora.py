@@ -68,7 +68,7 @@ def force_memory_cleanup():
 
 def process_seed(seed_args):
     """Function to process a single seed, used for thread pool"""
-    seed_idx, seed, lora_path, accelerator, thread_id, verbose = seed_args
+    seed_idx, seed, lora_path, eval_type, dataset, gpu_id, accelerator, thread_id, verbose = seed_args
 
     if verbose:
         print(f"Process {accelerator.process_index} Thread {thread_id} processing seed {seed_idx} (value: {seed} lora_path: {lora_path})")
