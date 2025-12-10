@@ -25,14 +25,14 @@ if __name__ == "__main__":
     argParser = argparse.ArgumentParser()
     argParser.add_argument('--name', default="es_test", type=str, help="Name of the test run")
     argParser.add_argument('--eval_type', default="multiple_choice", type=str, help="Evaluation")
-    argParser.add_argument('--dataset', default="test_truthfulqa", type=str, help="Dataset to use for evaluation")
+    argParser.add_argument('--dataset', default="knowledge_crosswords", type=str, help="Dataset to use for evaluation")
     argParser.add_argument('--gpus', default="0", type=str, help="GPUs to use, e.g. '0,1,2,3'")
     argParser.add_argument("-b", "--base_model", default="google/gemma-7b-it", help="base model of the lora experts")
     argParser.add_argument('--search_pass_name', default="es_search", type=str, help="Name of the search pass")
     argParser.add_argument("-i", "--initial_expert_directory", default="./initial_experts", help="initial expert directory") # make it a directory of initial expert checkpoints, see initial_experts/ for example
 
     args = argParser.parse_args()
-    search_pass_name = args.search_pass_name
+    search_pass_name = args.search_pass_name + "_" + current_time_string().replace(" ", "_")
     eval_type = args.eval_type
     dataset = args.dataset
     gpus = args.gpus
@@ -63,7 +63,6 @@ if __name__ == "__main__":
         torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-    torch.use_deterministic_algorithms(True)
 
     # Configure logging to write to a file
     logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
@@ -104,7 +103,7 @@ if __name__ == "__main__":
 
 
     initialize_search_records(
-        search_pass_name=args.search_pass_name,
+        search_pass_name=search_pass_name,
         particle_paths=particle_paths,
         eval_type=args.eval_type,
         dataset=args.dataset,
@@ -117,5 +116,5 @@ if __name__ == "__main__":
     output = es_lora(
         lora_path,
         eval_type, dataset, seed, POPULATION_SIZE 
-        =3, NUM_ITERATIONS=2)
+        =30, NUM_ITERATIONS=10)
     log_with_flush(f"Test completed. Final reward: {output}")

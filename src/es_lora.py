@@ -5,6 +5,7 @@ import numpy as np
 import copy
 import os
 import argparse
+import shutil
 from accelerate import Accelerator
 import time
 import torch.multiprocessing as mp
@@ -50,22 +51,32 @@ def process_seed(seed_args):
         noise = torch.randn(sd[name].shape, generator=gen, dtype=sd[name].dtype)
         sd[name] += SIGMA * noise
 
-    # Save as temporary LoRA
-    tmp_path = f"/tmp/particle_{thread_id}_{seed_idx}.safetensors"
-    save_file(sd, tmp_path)
+        # Create temp directory for this particle
+    tmp_dir = f"/tmp/particle_{thread_id}_{seed_idx}"
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    # Save the mutated LoRA weights
+    adapter_model_path = os.path.join(tmp_dir, "adapter_model.safetensors")
+    save_file(sd, adapter_model_path)
+    
+    # Copy adapter_config.json (required for load_adapter)
+    shutil.copy(
+    os.path.join(lora_path, "adapter_config.json"),
+    os.path.join(tmp_dir, "adapter_config.json")
+    )   
 
     # Ensure weights are fully loaded before evaluation
     if torch.cuda.is_available():
         torch.cuda.synchronize(accelerator.device)
 
     # evaluate perturbed model
-    reward = evaluate(tmp_path, eval_type, dataset, gpu_id, seed)
+    reward = evaluate(tmp_dir, eval_type, dataset, gpu_id, seed=seed)
 
     # remove temporary file
     try:
-        os.remove(tmp_path)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     except FileNotFoundError:
-        logging.warning(f"Temporary file {tmp_path} not found for removal.")
+        logging.warning(f"Temporary dir {tmp_dir} not found for removal.")
 
     if torch.cuda.is_available():
         torch.cuda.synchronize(accelerator.device)
@@ -80,7 +91,7 @@ def process_seed(seed_args):
 # --- Main Evolution Strategies Loop ---
 def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-it", 
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005,
-             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1):
+             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, overwrite_output_dir=True):
 
     accelerator = Accelerator()
     if accelerator.is_main_process:

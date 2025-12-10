@@ -266,8 +266,6 @@ def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-
         torch.manual_seed(seed)
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
     
     if skip_flag:
         return None
@@ -565,9 +563,7 @@ def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/g
         torch.manual_seed(seed)
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-    
+
     global model
     global tokenizer
 
