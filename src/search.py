@@ -19,7 +19,7 @@ from datasets import load_dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig
 from es_lora import es_lora
-
+import weave
 
 def log_with_flush(message, level=logging.INFO):
   logging.log(level, message)
@@ -115,14 +115,16 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
         utility_scratchpad[f"particle_{i}_history"].append(results[i])
 
     # logging at iteration=0
-    wandb_log = {
-        "g": utility_scratchpad["g"],
-        "g_worst": utility_scratchpad["g_worst"],
-    }
-    for i in range(len(particle_paths)):
-        wandb_log["particle_" + str(i) + "_now"] = utility_scratchpad["particle_" + str(i) + "_now"]
-    wandb.log(wandb_log)
-
+    try:
+        wandb_log = {
+            "g": utility_scratchpad["g"],
+            "g_worst": utility_scratchpad["g_worst"],
+        }
+        for i in range(len(particle_paths)):
+            wandb_log["particle_" + str(i) + "_now"] = utility_scratchpad["particle_" + str(i) + "_now"]
+        wandb.log(wandb_log)
+    except:
+        pass
 
     with open(os.path.join("search", search_pass_name, "utility_scratchpad.json"), "w") as f:
         json.dump(utility_scratchpad, f, indent=4)
