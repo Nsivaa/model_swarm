@@ -8,7 +8,6 @@ import argparse
 import random
 import logging
 import datetime
-import wandb
 import numpy as np
 from overall_metrics import overall_metrics, plot_particle_trajectories
 from merge import lora_merge, dare_ties_merge
@@ -49,8 +48,8 @@ if __name__ == "__main__":
     social_coeff=0.5
     repel_coeff=0.5
     step_length=0.5
-    populate_initial_experts=True
-    initial_experts_num=12
+    populate_initial_experts=False
+    initial_experts_num=10
     # create search directory
     if os.path.exists(os.path.join("search", search_pass_name)):
         search_pass_name += current_time_string().replace(" ", "_")
@@ -66,8 +65,6 @@ if __name__ == "__main__":
 
     # Configure logging to write to a file
     logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
-    run = wandb.init(name=search_pass_name, project=project_name_wb)
-    run.config.update(args)
     gpus = [int(gpu) for gpu in gpus.split(",")]
     particle_paths = []
     for particle_path in os.listdir(initial_expert_directory):
@@ -112,9 +109,8 @@ if __name__ == "__main__":
         fast_merge=fast_merge,
         starting_velocity_mode=starting_velocity_mode)
     # test a random expert
-    lora_path = os.path.join(initial_expert_directory, random.choice(os.listdir(initial_expert_directory)))
-    output = es_lora(
+    lora_path = "search/es_search/particle_2/now"
+    output, out_dir = es_lora(
         lora_path,
-        eval_type, dataset, seed, POPULATION_SIZE 
-        =30, NUM_ITERATIONS=10)
-    log_with_flush(f"Test completed. Final reward: {output}")
+        eval_type, dataset, seed, POPULATION_SIZE = 5, NUM_ITERATIONS = 2, SIGMA = 0.05, ALPHA = 0.005, verbose=True, overwrite_output_dir=False, search_pass_name=search_pass_name)
+    print("Final evaluation output:", output)

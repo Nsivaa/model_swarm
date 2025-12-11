@@ -1,6 +1,5 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers.utils import logging
 import numpy as np
 import copy
 import os
@@ -18,12 +17,16 @@ from tqdm import tqdm
 from evaluate import evaluate
 from peft import LoraConfig, PeftModel, get_peft_model
 from safetensors.torch import load_file, save_file
+import logging
 
-logging.set_verbosity_error()
 torch.backends.cuda.matmul.allow_tf32 = True
 os.environ["PYTHONWARNINGS"] = "ignore"
 mp.set_start_method('spawn', force=True)
 
+
+def log_with_flush(message, level=logging.INFO):
+  logging.log(level, message)
+  logging.getLogger().handlers[0].flush()
 
 def force_memory_cleanup():
     """Force aggressive memory cleanup"""
@@ -51,7 +54,7 @@ def process_seed(seed_args):
         noise = torch.randn(sd[name].shape, generator=gen, dtype=sd[name].dtype)
         sd[name] += SIGMA * noise
 
-        # Create temp directory for this particle
+    # Create temp directory for this particle
     tmp_dir = f"/tmp/particle_{thread_id}_{seed_idx}"
     os.makedirs(tmp_dir, exist_ok=True)
 
@@ -59,6 +62,11 @@ def process_seed(seed_args):
     adapter_model_path = os.path.join(tmp_dir, "adapter_model.safetensors")
     save_file(sd, adapter_model_path)
     
+    # assert that weights are actually changed
+    sd_perturbed = load_file(adapter_model_path, device="cpu")
+    weights_changed = any(not torch.equal(sd_original[k], sd_perturbed[k]) for k in sd_original)
+    assert weights_changed, "Weights did not change after perturbation!" 
+
     # Copy adapter_config.json (required for load_adapter)
     shutil.copy(
     os.path.join(lora_path, "adapter_config.json"),
@@ -70,8 +78,12 @@ def process_seed(seed_args):
         torch.cuda.synchronize(accelerator.device)
 
     # evaluate perturbed model
+    # calculate evaluation time
+    eval_time = time.time()
     reward = evaluate(tmp_dir, eval_type, dataset, gpu_id, seed=seed)
-
+    eval_time = time.time() - eval_time
+    if verbose:
+        print(f"Evaluation time : {eval_time:.2f}s")
     # remove temporary file
     try:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -82,39 +94,52 @@ def process_seed(seed_args):
         torch.cuda.synchronize(accelerator.device)
     force_memory_cleanup()
 
+    log_string = f"Process {accelerator.process_index} Thread {thread_id} completed seed {seed_idx} with reward {reward:.4f}, lora_path: {lora_path}"
+    log_with_flush(log_string)
+
     if verbose:
-        print(f"Process {accelerator.process_index} Thread {thread_id} completed seed {seed_idx} with reward {reward:.4f}, lora_path: {lora_path}")
+        print(log_string)
 
     return seed_idx, reward
 
 
 # --- Main Evolution Strategies Loop ---
-def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-it", 
-             POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005,
-             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, overwrite_output_dir=True):
+def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = "google/gemma-7b-it", 
+             POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005, 
+             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, overwrite_output_dir=False):
 
+    # Configure logging to write to a file
+    logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
     accelerator = Accelerator()
     if accelerator.is_main_process:
-        print(f"Total processes: {accelerator.num_processes}, GPU threads per process: {gpu_threads}")
-        print(f"Population size: {POPULATION_SIZE}, Iterations: {NUM_ITERATIONS}")
-        print(f"Sigma: {SIGMA}, Alpha: {ALPHA}")
+      # print(f"Total processes: {accelerator.num_processes}, GPU threads per process: {gpu_threads}")
+        log_string = f"Population size: {POPULATION_SIZE}, Iterations: {NUM_ITERATIONS}\nSigma: {SIGMA}, Alpha: {ALPHA}"
+        log_with_flush(log_string)
+        print(log_string)
 
     lora_list = []
     for _ in range(gpu_threads):
         lora_list.append(lora_path)
+    
+    np.random.seed(seed)
+
+    # ------ Initial evaluation ------ DEBUG
+    initial_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
+    print(f"Initial evaluation reward: {initial_reward:.4f}")
+    # -------------------------------------
 
     # Record total training start time
     training_start_time = time.time()
-
-    np.random.seed(seed)
-
     for iteration in tqdm(range(NUM_ITERATIONS)):
         # Record iteration start time
         iter_start_time = time.time()
 
         # Force garbage collection
         force_memory_cleanup()
-        print(f"Process {accelerator.process_index} starting iteration {iteration + 1}/{NUM_ITERATIONS}")
+        log_string = f"Starting iteration {iteration + 1}/{NUM_ITERATIONS}"
+        log_with_flush(log_string)
+        if verbose:
+            print(log_string)
 
         # Generate seeds on main process only
         if accelerator.is_main_process:
@@ -212,22 +237,53 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
         force_memory_cleanup()
 
         if accelerator.is_main_process:
-            print(f"Iteration {iteration + 1}/{NUM_ITERATIONS}, Time: {iter_time:.2f}s, Mean: {mean_reward:.2f}, Min: {min_reward:.2f}, Max: {max_reward:.2f}")
-            print(f"GPU Memory: {torch.cuda.memory_allocated() / 1024**2:.2f}MB allocated, {torch.cuda.max_memory_allocated() / 1024**2:.2f}MB peak")
+            log_string = f"Iteration {iteration + 1}/{NUM_ITERATIONS} completed. Time: {iter_time:.2f}s, Mean Reward: {mean_reward:.4f}, Min Reward: {min_reward:.4f}, Max Reward: {max_reward:.4f}"
+            log_with_flush(log_string)
+            if verbose:
+                print(log_string)
+            
+          # print(f"GPU Memory: {torch.cuda.memory_allocated() / 1024**2:.2f}MB allocated, {torch.cuda.max_memory_allocated() / 1024**2:.2f}MB peak")
 
     total_time = time.time() - training_start_time
+    
+    if verbose:
+        print(log_string)
 
     # Save the fine-tuned model weights.
     if accelerator.is_main_process:
+        log_string = f"Training completed in {total_time:.2f}s ({total_time/60:.2f} minutes)"
+        log_with_flush(log_string)
         if verbose:
-            print(f"Training completed in {total_time:.2f}s ({total_time/60:.2f} minutes)")       
-            print(f"Saving model to {save_dir}...")
+            print(log_string)
+
         if overwrite_output_dir and os.path.exists(lora_path):
             save_dir = lora_path
         else:
-            save_dir = f"finetuned_{lora_path}_es_random_seed{initial_seed}_pop{POPULATION_SIZE}_iter{NUM_ITERATIONS}_sigma{SIGMA}_alpha{ALPHA}"
+            # Parent directory of the input LoRA
+            parent_dir = os.path.dirname(lora_path)
+            folder_name = f"es_{POPULATION_SIZE}_{NUM_ITERATIONS}_{SIGMA}_{ALPHA}"
+            save_dir = os.path.join(parent_dir, folder_name)
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Save updated LoRA weights
         save_file(lora_sd_original, os.path.join(save_dir, "adapter_model.safetensors"))
+
+        # Copy adapter_config.json so the LoRA stays loadable
+        shutil.copy(
+            os.path.join(lora_path, "adapter_config.json"),
+            os.path.join(save_dir, "adapter_config.json")
+        )
+
         if verbose:
             print(f"Saved updated LoRA to {save_dir}")
-    
-    return save_dir
+
+        # --- Final evaluation ---
+        final_reward = evaluate(save_dir, eval_type, dataset, gpu_id, seed=seed)
+        log_string = (f"Initial evaluation reward: {initial_reward:.4f}\n"
+                    f"Final evaluation reward:   {final_reward:.4f}")
+        log_with_flush(log_string)
+        if verbose:
+            print(log_string)
+
+    return final_reward, save_dir

@@ -274,14 +274,15 @@ def evaluate(model_path, eval_type, dataset, gpu_id, base_model = "google/gemma-
     global tokenizer
     only_one_or_two = ONLY_ONE_OR_TWO
     try:
-        model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.float16, cache_dir=CACHE_DIR)
+        model = AutoModelForCausalLM.from_pretrained(base_model, dtype=torch.float16, cache_dir=CACHE_DIR)
         model.load_adapter(model_path)
         model.to(f"cuda:{gpu_id}")
         tokenizer = AutoTokenizer.from_pretrained(base_model)
     except:
+        print("Loading model directly from path:", model_path)
         del model
         del tokenizer
-        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, cache_dir=CACHE_DIR)
+        model = AutoModelForCausalLM.from_pretrained(model_path, dtype=torch.float16, cache_dir=CACHE_DIR)
         model.to(f"cuda:{gpu_id}")
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
@@ -570,14 +571,14 @@ def evaluate_test(model_path, eval_type, dataset, gpu_id, base_model = "google/g
     only_one_or_two = ONLY_ONE_OR_TWO
 
     try:
-        model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.float16, cache_dir=CACHE_DIR)
+        model = AutoModelForCausalLM.from_pretrained(base_model, dtype=torch.float16, cache_dir=CACHE_DIR)
         model.load_adapter(model_path)
         model.to(f"cuda:{gpu_id}")
         tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=CACHE_DIR)
     except:
         del model
         del tokenizer
-        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, cache_dir=CACHE_DIR)
+        model = AutoModelForCausalLM.from_pretrained(model_path, dtype=torch.float16, cache_dir=CACHE_DIR)
         model.to(f"cuda:{gpu_id}")
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
