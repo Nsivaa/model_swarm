@@ -12,6 +12,7 @@ initial_experts_mistral/
 !initial_experts/expert_init.py
 other_checkpoint/*
 *.sh
+!test_es.sh
 *.yml
 !swarm.yml
 *.txt

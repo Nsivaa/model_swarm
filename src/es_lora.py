@@ -18,11 +18,14 @@ from evaluate import evaluate
 from peft import LoraConfig, PeftModel, get_peft_model
 from safetensors.torch import load_file, save_file
 import logging
+import wandb
+
 
 torch.backends.cuda.matmul.allow_tf32 = True
 os.environ["PYTHONWARNINGS"] = "ignore"
 mp.set_start_method('spawn', force=True)
-
+# Reduce verbosity for urllib3 (used by requests/HuggingFace)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 def log_with_flush(message, level=logging.INFO):
   logging.log(level, message)
@@ -107,9 +110,21 @@ def process_seed(seed_args):
 def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = "google/gemma-7b-it", 
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005, 
              cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, overwrite_output_dir=False):
+    
+    # Determine save directory
+    if overwrite_output_dir and os.path.exists(lora_path):
+        save_dir = lora_path
+    else:
+        # Parent directory of the input LoRA
+        parent_dir = os.path.dirname(lora_path)
+        folder_name = f"es_{POPULATION_SIZE}_{NUM_ITERATIONS}_{SIGMA}_{ALPHA}"
+        save_dir = os.path.join(parent_dir, folder_name)
 
-    # Configure logging to write to a file
-    logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Configure logging to write to a file (log.txt) in the save directory
+    logging.basicConfig(filename=os.path.join(save_dir, "log.txt"), level=logging.DEBUG, force=True)
+
     accelerator = Accelerator()
     if accelerator.is_main_process:
       # print(f"Total processes: {accelerator.num_processes}, GPU threads per process: {gpu_threads}")
@@ -125,7 +140,11 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
 
     # ------ Initial evaluation ------ DEBUG
     initial_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
-    print(f"Initial evaluation reward: {initial_reward:.4f}")
+    log_string = f"Initial evaluation reward: {initial_reward:.4f}"
+    log_with_flush(log_string)
+    if verbose:
+        print(f"Initial evaluation reward: {initial_reward:.4f}")
+    wandb.log({"initial_evaluation_reward": float(initial_reward)})
     # -------------------------------------
 
     # Record total training start time
@@ -239,6 +258,14 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         if accelerator.is_main_process:
             log_string = f"Iteration {iteration + 1}/{NUM_ITERATIONS} completed. Time: {iter_time:.2f}s, Mean Reward: {mean_reward:.4f}, Min Reward: {min_reward:.4f}, Max Reward: {max_reward:.4f}"
             log_with_flush(log_string)
+            wandb_log = {
+                "iteration": int(iteration + 1),
+                "mean_reward": float(mean_reward),
+                "max_reward": float(max_reward),
+                "min_reward": float(min_reward)
+            }
+            wandb.log(wandb_log)
+
             if verbose:
                 print(log_string)
             
@@ -255,17 +282,7 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         log_with_flush(log_string)
         if verbose:
             print(log_string)
-
-        if overwrite_output_dir and os.path.exists(lora_path):
-            save_dir = lora_path
-        else:
-            # Parent directory of the input LoRA
-            parent_dir = os.path.dirname(lora_path)
-            folder_name = f"es_{POPULATION_SIZE}_{NUM_ITERATIONS}_{SIGMA}_{ALPHA}"
-            save_dir = os.path.join(parent_dir, folder_name)
-
-        os.makedirs(save_dir, exist_ok=True)
-
+        
         # Save updated LoRA weights
         save_file(lora_sd_original, os.path.join(save_dir, "adapter_model.safetensors"))
 
@@ -282,6 +299,7 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         final_reward = evaluate(save_dir, eval_type, dataset, gpu_id, seed=seed)
         log_string = (f"Initial evaluation reward: {initial_reward:.4f}\n"
                     f"Final evaluation reward:   {final_reward:.4f}")
+        wandb.log({"final_evaluation_reward": float(final_reward)})
         log_with_flush(log_string)
         if verbose:
             print(log_string)

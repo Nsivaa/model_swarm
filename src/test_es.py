@@ -19,6 +19,8 @@ from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig
 from es_lora import es_lora
 from search import initialize_search_records, log_with_flush, current_time_string
+import wandb
+
 
 if __name__ == "__main__":
     argParser = argparse.ArgumentParser()
@@ -29,33 +31,38 @@ if __name__ == "__main__":
     argParser.add_argument("-b", "--base_model", default="google/gemma-7b-it", help="base model of the lora experts")
     argParser.add_argument('--search_pass_name', default="es_search", type=str, help="Name of the search pass")
     argParser.add_argument("-i", "--initial_expert_directory", default="./initial_experts", help="initial expert directory") # make it a directory of initial expert checkpoints, see initial_experts/ for example
-
+    argParser.add_argument('--population_size', default=10, type=int, help="Population size for ES")
+    argParser.add_argument('--num_iterations', default=5, type=int, help="Number of iterations for ES")
+    argParser.add_argument('--sigma', default=0.005, type=float, help="Sigma for ES")
+    argParser.add_argument('--alpha', default=0.005, type=float, help="Alpha for ES")
+    argParser.add_argument('--wandb_project', default="es_grid_search", type=str, help="wandb project name")
+    argParser.add_argument('--seed', default=42, type=int, help="Random seed")
     args = argParser.parse_args()
-    search_pass_name = args.search_pass_name + "_" + current_time_string().replace(" ", "_")
+    name = args.name
+    search_pass_name = args.search_pass_name 
     eval_type = args.eval_type
     dataset = args.dataset
     gpus = args.gpus
-    seed = 42
+    seed = args.seed
     base_model = args.base_model
-    initial_expert_directory = args.initial_expert_directory
-    starting_velocity_mode = "random" # "zero", "random", "inertia"
-    fast_merge = True
-    use_dare_ties = False
-    project_name_wb = "model_swarm"
-    dropout_rate=0.5
-    inertia=0.3
-    cognitive_coeff=0
-    social_coeff=0.5
-    repel_coeff=0.5
-    step_length=0.5
-    populate_initial_experts=False
-    initial_experts_num=10
-    # create search directory
-    if os.path.exists(os.path.join("search", search_pass_name)):
-        search_pass_name += current_time_string().replace(" ", "_")
-        # exit("search directory already exists!")
-    os.mkdir(os.path.join("search", search_pass_name))
+    POPULATION_SIZE = args.population_size
+    NUM_ITERATIONS = args.num_iterations
+    SIGMA = args.sigma
+    ALPHA = args.alpha
+    project_name_wb = args.wandb_project
 
+    run = wandb.init(name=name, project=project_name_wb)
+    run.config.update(args)
+    # Initialize wandb logging
+    wandb_log = {}
+    wandb_log["iteration"] = 0
+    wandb_log["mean_reward"] = 0.0
+    wandb_log["max_reward"] = 0.0
+    wandb_log["min_reward"] = 0.0
+    wandb_log["initial_evaluation_reward"] = 0.0
+    wandb_log["final_evaluation_reward"] = 0.0   
+    wandb.log(wandb_log)
+    
     if seed:
         random.seed(seed)
         np.random.seed(seed)
@@ -65,6 +72,16 @@ if __name__ == "__main__":
 
     # Configure logging to write to a file
     logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
+
+    """
+    initial_expert_directory = args.initial_expert_directory
+    starting_velocity_mode = "random" # "zero", "random", "inertia"
+    fast_merge = True
+    use_dare_ties = False
+    populate_initial_experts=False
+    initial_experts_num=10
+
+    
     gpus = [int(gpu) for gpu in gpus.split(",")]
     particle_paths = []
     for particle_path in os.listdir(initial_expert_directory):
@@ -98,7 +115,6 @@ if __name__ == "__main__":
             
             particle_paths.append(child_path)
 
-
     initialize_search_records(
         search_pass_name=search_pass_name,
         particle_paths=particle_paths,
@@ -108,9 +124,13 @@ if __name__ == "__main__":
         base_model=args.base_model,
         fast_merge=fast_merge,
         starting_velocity_mode=starting_velocity_mode)
+        """
+
     # test a random expert
     lora_path = "search/es_search/particle_2/now"
     output, out_dir = es_lora(
         lora_path,
-        eval_type, dataset, seed, POPULATION_SIZE = 5, NUM_ITERATIONS = 2, SIGMA = 0.05, ALPHA = 0.005, verbose=True, overwrite_output_dir=False, search_pass_name=search_pass_name)
+        eval_type, dataset, seed, POPULATION_SIZE = POPULATION_SIZE,
+        NUM_ITERATIONS = NUM_ITERATIONS, SIGMA = SIGMA, ALPHA = ALPHA,
+        verbose=True, overwrite_output_dir=False, search_pass_name=search_pass_name)
     print("Final evaluation output:", output)

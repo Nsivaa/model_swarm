@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Set GPUs to use
+export CUDA_VISIBLE_DEVICES="0"
+
+# Python script entrypoint
+PYTHON_SCRIPT="src/test_es.py"
+
+# Common arguments
+EVAL_TYPE="multiple_choice"
+DATASET="knowledge_crosswords"
+BASE_MODEL="google/gemma-7b-it"
+SEARCH_PASS_NAME="es_search"
+INITIAL_EXPERT_DIR="./initial_experts"
+
+# Hyperparameter grids
+POP_SIZES=(10 15)
+NUM_ITERATIONS=(3 5)
+SIGMAS=(0.001 0.005 0.01 0.05)
+ALPHAS=(0.001 0.005 0.01 0.05)
+
+# Optional WandB project
+WANDB_PROJECT="es_grid_search"
+
+# Random seed
+SEED=42
+
+for POP in "${POP_SIZES[@]}"; do
+    for ITER in "${NUM_ITERATIONS[@]}"; do
+        for SIGMA in "${SIGMAS[@]}"; do
+            for ALPHA in "${ALPHAS[@]}"; do
+                # Compose a descriptive run name
+                RUN_NAME="es_pop${POP}_iter${ITER}_sigma${SIGMA}_alpha${ALPHA}"
+
+                # Run Python script with hyperparameters
+                python "$PYTHON_SCRIPT" \
+                    --name "$RUN_NAME" \
+                    --eval_type "$EVAL_TYPE" \
+                    --dataset "$DATASET" \
+                    --gpus "0" \
+                    --base_model "$BASE_MODEL" \
+                    --search_pass_name "$SEARCH_PASS_NAME" \
+                    --initial_expert_directory "$INITIAL_EXPERT_DIR" \
+                    --population_size "$POP" \
+                    --num_iterations "$ITER" \
+                    --sigma "$SIGMA" \
+                    --alpha "$ALPHA" \
+                    --seed "$SEED" \
+                    --wandb_project "$WANDB_PROJECT"
+
+                echo "Finished run: $RUN_NAME"
+            done
+        done
+    done
+done
