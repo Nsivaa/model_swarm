@@ -112,7 +112,10 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
              cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1):
     
     os.makedirs(lora_path, exist_ok=True)
-    logging.basicConfig(filename=os.path.join(lora_path, "log.txt"), level=logging.DEBUG, force=True)
+    logging.basicConfig(filename=os.path.join(lora_path, "log.txt"),
+                        level=logging.DEBUG,
+                        format="%(asctime)s - %(levelname)s - %(message)s",
+                        force=True)
 
     accelerator = Accelerator()
     if accelerator.is_main_process:
@@ -244,11 +247,11 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
 
         iter_time = time.time() - iter_start_time
 
-        mean_reward = rewards_tensor.mean().item()
-        min_reward = rewards_tensor.min().item()
-        max_reward = rewards_tensor.max().item()
+        mean_reward = rewards_np.mean().item()
+        min_reward = rewards_np.min().item()
+        max_reward = rewards_np.max().item()
 
-        del rewards_tensor, rewards_normalized
+        del rewards_np, rewards_norm
         force_memory_cleanup()
 
         if accelerator.is_main_process:
