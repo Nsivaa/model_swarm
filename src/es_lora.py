@@ -209,39 +209,37 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         del all_rewards
         force_memory_cleanup()
 
-        # Convert rewards to a tensor and normalize.
-        rewards_tensor = np.array(rewards, dtype=np.float32)
-        rewards_normalized = (rewards_tensor - rewards_tensor.mean()) / (rewards_tensor.std() + 1e-8)
-        
-        # update lora parameters
-        lora_param_names = list(lora_sd.keys())
-        for name in lora_param_names:
-            param = lora_sd[name].to(accelerator.device)
-            gen = torch.Generator(device=param.device)
-            update = torch.zeros_like(param)
-            for seed_idx in range(POPULATION_SIZE):
-                r_norm = rewards_normalized[seed_idx]
-                seed = seeds[seed_idx]
-                gen.manual_seed(int(seed))
-                noise = torch.randn(param.shape, generator=gen, device=param.device, dtype=param.dtype)
-                noise.mul_(float(r_norm))
-                update.add_(noise)
-                del noise
-            update.div_(POPULATION_SIZE)
-            lora_sd[name] = (param + ALPHA * update).cpu()
-            torch.cuda.empty_cache()
+        # ======= ES PARAMETER UPDATE =======
 
+        # Convert rewards to numpy and normalize
+        rewards_np = np.array(rewards, dtype=np.float32)
+        rewards_norm = (rewards_np - rewards_np.mean()) / (rewards_np.std() + 1e-8)
+
+        # --- Update LoRA parameters ---
+        param_names = list(lora_sd.keys())
+
+        for name in param_names:
+            param = lora_sd[name].to(accelerator.device)
+            update = torch.zeros_like(param)
+            gen = torch.Generator(device=param.device)
+
+            # accumulate ES updates
+            for seed_idx in range(POPULATION_SIZE):
+                gen.manual_seed(int(seeds[seed_idx]))
+                noise = torch.randn(param.shape, generator=gen, device=param.device)
+                update.add_(noise * float(rewards_norm[seed_idx]))
+
+            update /= POPULATION_SIZE
+            lora_sd[name] = (param + ALPHA * update).cpu()
+
+        # --- Save updated model (main process only) ---
         if accelerator.is_main_process:
-            # Save the updated model 
             save_file(lora_sd, os.path.join(lora_path, "adapter_model.safetensors"))
             torch.cuda.synchronize()
-            torch.cuda.empty_cache()
+
         accelerator.wait_for_everyone()
 
-        # Synchronize to ensure weight updates are complete
-        if torch.cuda.is_available():
-            torch.cuda.synchronize(accelerator.device)
-
+        # Light cleanup
         force_memory_cleanup()
 
         iter_time = time.time() - iter_start_time
@@ -271,29 +269,21 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
 
     total_time = time.time() - training_start_time
     
-    if verbose:
-        print(log_string)
-
-    # Save the fine-tuned model weights.
+    # ======= FINAL EVALUATION =======
     if accelerator.is_main_process:
-        log_string = f"Training completed in {total_time:.2f}s ({total_time/60:.2f} minutes)"
+
+        total_time = time.time() - training_start_time
+        log_string = f"Training completed in {total_time:.2f}s ({total_time/60:.2f} min)"
         log_with_flush(log_string)
+
         if verbose:
             print(log_string)
-        
-        # Save updated LoRA weights
-        save_file(lora_sd, os.path.join(lora_path, "adapter_model.safetensors"))
 
-        if verbose:
-            print(f"Saved updated LoRA to {lora_path}")
-
-        # --- Final evaluation ---
         final_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
-        log_string = (f"Initial evaluation reward: {initial_reward:.4f}\n"
-                      f"Final evaluation reward:   {final_reward:.4f}")
         wandb.log({"final_evaluation_reward": float(final_reward)})
-        log_with_flush(log_string)
-        if verbose:
-            print(log_string)
+
+        log_with_flush(
+            f"Initial reward: {initial_reward:.4f}\nFinal reward:   {final_reward:.4f}"
+        )
 
     return final_reward, lora_path
