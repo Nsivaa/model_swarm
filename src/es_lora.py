@@ -112,7 +112,7 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
              cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1):
     
     os.makedirs(lora_path, exist_ok=True)
-    logging.basicConfig(filename=os.path.join(lora_path, "log.txt"), ...)
+    logging.basicConfig(filename=os.path.join(lora_path, "log.txt"), level=logging.DEBUG, force=True)
 
     accelerator = Accelerator()
     if accelerator.is_main_process:
