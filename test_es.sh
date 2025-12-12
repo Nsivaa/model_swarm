@@ -16,8 +16,8 @@ INITIAL_EXPERT_DIR="./initial_experts"
 # Hyperparameter grids
 POP_SIZES=(10 15)
 NUM_ITERATIONS=(3 5)
-SIGMAS=(0.001 0.005 0.01 0.05)
-ALPHAS=(0.001 0.005 0.01 0.05)
+SIGMAS=(0.0005 0.001 0.005 0.01)
+ALPHAS=(0.0005 0.001 0.005 0.01)
 
 # Optional WandB project
 WANDB_PROJECT="es_grid_search"
