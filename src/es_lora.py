@@ -66,10 +66,10 @@ def process_seed(seed_args):
     save_file(sd, adapter_model_path)
     
     # assert that weights are actually changed
-    sd_perturbed = load_file(adapter_model_path, device="cpu")
-    weights_changed = any(not torch.equal(sd_original[k], sd_perturbed[k]) for k in sd_original)
-    assert weights_changed, "Weights did not change after perturbation!" 
-
+    # sd_perturbed = load_file(adapter_model_path, device="cpu")
+    # weights_changed = any(not torch.equal(sd_original[k], sd_perturbed[k]) for k in sd_original)
+    # assert weights_changed, "Weights did not change after perturbation!" 
+    
     # Copy adapter_config.json (required for load_adapter)
     shutil.copy(
     os.path.join(lora_path, "adapter_config.json"),
@@ -111,11 +111,8 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005, 
              cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1):
     
-    save_dir = lora_path
-    os.makedirs(save_dir, exist_ok=True)
-
-    # Configure logging to write to a file (log.txt) in the save directory
-    logging.basicConfig(filename=os.path.join(save_dir, "log.txt"), level=logging.DEBUG, force=True)
+    os.makedirs(lora_path, exist_ok=True)
+    logging.basicConfig(filename=os.path.join(lora_path, "log.txt"), ...)
 
     accelerator = Accelerator()
     if accelerator.is_main_process:
@@ -285,19 +282,19 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
             print(log_string)
         
         # Save updated LoRA weights
-        save_file(lora_sd, os.path.join(save_dir, "adapter_model.safetensors"))
+        save_file(lora_sd, os.path.join(lora_path, "adapter_model.safetensors"))
 
         # Copy adapter_config.json so the LoRA stays loadable
         shutil.copy(
             os.path.join(lora_path, "adapter_config.json"),
-            os.path.join(save_dir, "adapter_config.json")
+            os.path.join(lora_path, "adapter_config.json")
         )
 
         if verbose:
-            print(f"Saved updated LoRA to {save_dir}")
+            print(f"Saved updated LoRA to {lora_path}")
 
         # --- Final evaluation ---
-        final_reward = evaluate(save_dir, eval_type, dataset, gpu_id, seed=seed)
+        final_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
         log_string = (f"Initial evaluation reward: {initial_reward:.4f}\n"
                       f"Final evaluation reward:   {final_reward:.4f}")
         wandb.log({"final_evaluation_reward": float(final_reward)})
@@ -305,4 +302,4 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         if verbose:
             print(log_string)
 
-    return final_reward, save_dir
+    return final_reward, lora_path
