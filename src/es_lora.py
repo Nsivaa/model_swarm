@@ -284,12 +284,6 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         # Save updated LoRA weights
         save_file(lora_sd, os.path.join(lora_path, "adapter_model.safetensors"))
 
-        # Copy adapter_config.json so the LoRA stays loadable
-        shutil.copy(
-            os.path.join(lora_path, "adapter_config.json"),
-            os.path.join(lora_path, "adapter_config.json")
-        )
-
         if verbose:
             print(f"Saved updated LoRA to {lora_path}")
 
