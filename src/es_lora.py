@@ -109,17 +109,9 @@ def process_seed(seed_args):
 # --- Main Evolution Strategies Loop ---
 def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = "google/gemma-7b-it", 
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005, 
-             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, overwrite_output_dir=False):
+             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1):
     
-    # Determine save directory
-    if overwrite_output_dir and os.path.exists(lora_path):
-        save_dir = lora_path
-    else:
-        # Parent directory of the input LoRA
-        parent_dir = os.path.dirname(lora_path)
-        folder_name = f"es_{POPULATION_SIZE}_{NUM_ITERATIONS}_{SIGMA}_{ALPHA}"
-        save_dir = os.path.join(parent_dir, folder_name)
-
+    save_dir = lora_path
     os.makedirs(save_dir, exist_ok=True)
 
     # Configure logging to write to a file (log.txt) in the save directory
@@ -146,6 +138,9 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         print(f"Initial evaluation reward: {initial_reward:.4f}")
     wandb.log({"initial_evaluation_reward": float(initial_reward)})
     # -------------------------------------
+
+    # Load the model
+    lora_sd = load_file(os.path.join(lora_path, "adapter_model.safetensors"), device="cpu")
 
     # Record total training start time
     training_start_time = time.time()
@@ -222,10 +217,9 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         rewards_normalized = (rewards_tensor - rewards_tensor.mean()) / (rewards_tensor.std() + 1e-8)
         
         # update lora parameters
-        lora_sd_original = load_file(os.path.join(lora_path, "adapter_model.safetensors"), device="cpu")
-        lora_param_names = list(lora_sd_original.keys())
+        lora_param_names = list(lora_sd.keys())
         for name in lora_param_names:
-            param = lora_sd_original[name].to(accelerator.device)
+            param = lora_sd[name].to(accelerator.device)
             gen = torch.Generator(device=param.device)
             update = torch.zeros_like(param)
             for seed_idx in range(POPULATION_SIZE):
@@ -237,8 +231,15 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
                 update.add_(noise)
                 del noise
             update.div_(POPULATION_SIZE)
-            lora_sd_original[name] = (param + ALPHA * update).cpu()
+            lora_sd[name] = (param + ALPHA * update).cpu()
             torch.cuda.empty_cache()
+
+        if accelerator.is_main_process:
+            # Save the updated model 
+            save_file(lora_sd, os.path.join(lora_path, "adapter_model.safetensors"))
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        accelerator.wait_for_everyone()
 
         # Synchronize to ensure weight updates are complete
         if torch.cuda.is_available():
@@ -284,7 +285,7 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
             print(log_string)
         
         # Save updated LoRA weights
-        save_file(lora_sd_original, os.path.join(save_dir, "adapter_model.safetensors"))
+        save_file(lora_sd, os.path.join(save_dir, "adapter_model.safetensors"))
 
         # Copy adapter_config.json so the LoRA stays loadable
         shutil.copy(
@@ -298,7 +299,7 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         # --- Final evaluation ---
         final_reward = evaluate(save_dir, eval_type, dataset, gpu_id, seed=seed)
         log_string = (f"Initial evaluation reward: {initial_reward:.4f}\n"
-                    f"Final evaluation reward:   {final_reward:.4f}")
+                      f"Final evaluation reward:   {final_reward:.4f}")
         wandb.log({"final_evaluation_reward": float(final_reward)})
         log_with_flush(log_string)
         if verbose:

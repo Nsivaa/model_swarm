@@ -127,10 +127,10 @@ if __name__ == "__main__":
         """
 
     # test a random expert
-    lora_path = "search/es_search/particle_2/now"
+    lora_path = "search/es_search/particle_2_copy/now"
     output, out_dir = es_lora(
         lora_path,
         eval_type, dataset, seed, POPULATION_SIZE = POPULATION_SIZE,
         NUM_ITERATIONS = NUM_ITERATIONS, SIGMA = SIGMA, ALPHA = ALPHA,
-        verbose=True, overwrite_output_dir=False, search_pass_name=search_pass_name)
+        verbose=True, search_pass_name=search_pass_name)
     print("Final evaluation output:", output)
