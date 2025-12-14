@@ -10,13 +10,12 @@ PYTHON_SCRIPT="src/test_es.py"
 EVAL_TYPE="multiple_choice"
 DATASET="knowledge_crosswords"
 BASE_MODEL="google/gemma-7b-it"
-SEARCH_PASS_NAME="es_search"
 INITIAL_EXPERT_DIR="./initial_experts"
 
 # Hyperparameter grids
-POP_SIZES=(10 15)
-NUM_ITERATIONS=(3 5)
-SIGMAS=(0.0005 0.001 0.005 0.01)
+POP_SIZES=(15)
+NUM_ITERATIONS=(5)
+SIGMAS=(0.001 0.005 0.01)
 ALPHAS=(0.0005 0.001 0.005 0.01)
 
 # Optional WandB project
@@ -30,8 +29,7 @@ for POP in "${POP_SIZES[@]}"; do
         for SIGMA in "${SIGMAS[@]}"; do
             for ALPHA in "${ALPHAS[@]}"; do
                 # Compose a descriptive run name
-                RUN_NAME="es_pop${POP}_iter${ITER}_sigma${SIGMA}_alpha${ALPHA}"
-
+                RUN_NAME="es_gen_pop${POP}_iter${ITER}_sigma${SIGMA}_alpha${ALPHA}"
                 # Run Python script with hyperparameters
                 python "$PYTHON_SCRIPT" \
                     --name "$RUN_NAME" \
@@ -39,7 +37,7 @@ for POP in "${POP_SIZES[@]}"; do
                     --dataset "$DATASET" \
                     --gpus "0" \
                     --base_model "$BASE_MODEL" \
-                    --search_pass_name "$SEARCH_PASS_NAME" \
+                    --search_pass_name "$RUN_NAME" \
                     --initial_expert_directory "$INITIAL_EXPERT_DIR" \
                     --population_size "$POP" \
                     --num_iterations "$ITER" \

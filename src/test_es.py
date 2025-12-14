@@ -70,67 +70,31 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-    # Configure logging to write to a file
-    logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
+    # Original particle path
+    starting_particle_path = "search/es_search/particle_2/now"
 
-    """
-    initial_expert_directory = args.initial_expert_directory
-    starting_velocity_mode = "random" # "zero", "random", "inertia"
-    fast_merge = True
-    use_dare_ties = False
-    populate_initial_experts=False
-    initial_experts_num=10
+    # Make a unique copy for this run
+    lora_path = f"search/es_search/particle_2_{search_pass_name}_" + current_time_string().replace(" ", "_")
+    if os.path.exists(lora_path):
+        shutil.rmtree(lora_path)  # remove old copy if exists
+    shutil.copytree(starting_particle_path, lora_path)
 
-    
-    gpus = [int(gpu) for gpu in gpus.split(",")]
-    particle_paths = []
-    for particle_path in os.listdir(initial_expert_directory):
-        if os.path.isdir(os.path.join(initial_expert_directory, particle_path)):
-            particle_paths.append(os.path.join(initial_expert_directory, particle_path))
-    particle_paths = sorted(particle_paths)
+    logging.basicConfig(
+        filename=os.path.join(lora_path, "log.txt"),
+        level=logging.DEBUG,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        force=True
+    )
 
-    # populate initial experts
-    if populate_initial_experts and initial_experts_num and len(particle_paths) < initial_experts_num:
-        log_with_flush("populating initial experts...")
-        log_with_flush("previously " + str(len(particle_paths)) + " experts")
-        log_with_flush("now " + str(initial_experts_num))
-        log_with_flush("adding " + str(initial_experts_num - len(particle_paths)) + " experts")
-
-        os.mkdir(os.path.join("search", search_pass_name, "tmp"))
-        particles_now = len(particle_paths)
-        for i in range(initial_experts_num - particles_now):
-            parent_1 = random.choice(particle_paths)
-            parent_2 = random.choice(particle_paths)
-            while parent_1 == parent_2:
-                parent_2 = random.choice(particle_paths)
-            child_path = os.path.join("search", search_pass_name, "tmp", "child_"+str(i))
-            w_1 = random.random() * 2 # half interpolation, half extrapolation
-            w_2 = 1 - w_1
-            shutil.copytree(parent_1, child_path)
-            
-            if use_dare_ties:
-                dare_ties_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], directly_load_safetensors=1, density=dropout_rate)
-            else:
-                lora_merge([w_1, w_2], [parent_1, parent_2], child_path, gpus[0], fast_merge)
-            
-            particle_paths.append(child_path)
-
-    initialize_search_records(
-        search_pass_name=search_pass_name,
-        particle_paths=particle_paths,
-        eval_type=args.eval_type,
-        dataset=args.dataset,
-        gpus=args.gpus,
-        base_model=args.base_model,
-        fast_merge=fast_merge,
-        starting_velocity_mode=starting_velocity_mode)
-        """
-
-    # test a random expert
-    lora_path = "search/es_search/particle_2_copy/now"
     output, out_dir = es_lora(
-        lora_path,
-        eval_type, dataset, seed, POPULATION_SIZE = POPULATION_SIZE,
-        NUM_ITERATIONS = NUM_ITERATIONS, SIGMA = SIGMA, ALPHA = ALPHA,
-        verbose=True, search_pass_name=search_pass_name)
+    lora_path,
+    eval_type, dataset, seed,
+    POPULATION_SIZE=POPULATION_SIZE,
+    NUM_ITERATIONS=NUM_ITERATIONS,
+    SIGMA=SIGMA,
+    ALPHA=ALPHA,
+    verbose=True,
+    search_pass_name=search_pass_name
+)
+
     print("Final evaluation output:", output)
