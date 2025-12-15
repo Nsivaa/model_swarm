@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import math
 import gc
 from tqdm import tqdm 
-from evaluate import evaluate
+from evaluate import evaluate, evaluate_test
 from peft import LoraConfig, PeftModel, get_peft_model
 from safetensors.torch import load_file, save_file
 import logging
@@ -110,7 +110,7 @@ def process_seed(seed_args):
 # --- Main Evolution Strategies Loop ---
 def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = "google/gemma-7b-it", 
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005, 
-             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, eval_starting_test = True):
+             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, eval_starting_test = False):
     
     os.makedirs(lora_path, exist_ok=True)
     logging.basicConfig(filename=os.path.join(lora_path, "log.txt"),
@@ -301,9 +301,11 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         log_string = (
             f"Initial reward:          {initial_reward:.4f}\n"
             f"Final reward:            {final_reward:.4f}\n"
-            f"Starting test accuracy:  {starting_test_accuracy:.4f}\n"
-            f"Ending test accuracy:    {ending_test_accuracy:.4f}"
+            f"Initial test accuracy:  {initial_test_accuracy:.4f}\n"
         )
+        if eval_starting_test:
+            log_string+= f"Ending test accuracy: {ending_test_accuracy:.4f}"
+            
         log_with_flush(log_string)
 
         if verbose:
