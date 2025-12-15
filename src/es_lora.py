@@ -52,10 +52,11 @@ def process_seed(seed_args):
     # copy LoRA weights for this particle
     sd = {k: v.clone() for k, v in sd_original.items()}
 
-    gen = torch.Generator().manual_seed(int(seed))
     for name in sd:
+        gen = torch.Generator().manual_seed(int(seed))
         noise = torch.randn(sd[name].shape, generator=gen, dtype=sd[name].dtype)
         sd[name] += SIGMA * noise
+        # print(f"NORM: {torch.norm(SIGMA * noise) / torch.norm(sd[name])}")
 
     # Create temp directory for this particle
     tmp_dir = f"/tmp/particle_{thread_id}_{seed_idx}"
@@ -109,7 +110,7 @@ def process_seed(seed_args):
 # --- Main Evolution Strategies Loop ---
 def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = "google/gemma-7b-it", 
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005, 
-             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1):
+             cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, eval_starting_test = True):
     
     os.makedirs(lora_path, exist_ok=True)
     logging.basicConfig(filename=os.path.join(lora_path, "log.txt"),
@@ -130,12 +131,16 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
     
     np.random.seed(seed)
 
-    # ------ Initial evaluation ------ DEBUG
+    # ------ Initial evaluation ------ 
     initial_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
     log_string = f"Initial evaluation reward: {initial_reward:.4f}"
+    if eval_starting_test:
+        initial_test_accuracy = evaluate_test(lora_path, eval_type, dataset, gpu_id, seed=seed)
+        log_string += f"Initial test accuracy: {initial_test_accuracy:.4f}"
+        wandb.log({"initial_test_accuracy": float(initial_test_accuracy)})
+
     log_with_flush(log_string)
-    if verbose:
-        print(f"Initial evaluation reward: {initial_reward:.4f}")
+    print(log_string)
     wandb.log({"initial_evaluation_reward": float(initial_reward)})
     # -------------------------------------
 
@@ -282,11 +287,27 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         if verbose:
             print(log_string)
 
+        # --- Final evaluations ---
         final_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
-        wandb.log({"final_evaluation_reward": float(final_reward)})
+        ending_test_accuracy = evaluate_test(lora_path, eval_type, dataset, gpu_id, seed=seed)
 
-        log_with_flush(
-            f"Initial reward: {initial_reward:.4f}\nFinal reward:   {final_reward:.4f}"
+        # --- WandB logging ---
+        wandb.log({
+            "final_evaluation_reward": float(final_reward),
+            "ending_test_accuracy": float(ending_test_accuracy),
+        })
+
+        # --- Final summary log ---
+        log_string = (
+            f"Initial reward:          {initial_reward:.4f}\n"
+            f"Final reward:            {final_reward:.4f}\n"
+            f"Starting test accuracy:  {starting_test_accuracy:.4f}\n"
+            f"Ending test accuracy:    {ending_test_accuracy:.4f}"
         )
+        log_with_flush(log_string)
+
+        if verbose:
+            print(log_string)
 
     return final_reward, lora_path
+
