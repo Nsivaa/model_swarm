@@ -108,12 +108,11 @@ def process_seed(seed_args):
 
 
 # --- Main Evolution Strategies Loop ---
-def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = "google/gemma-7b-it", 
+def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-it", 
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005, 
              cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, eval_starting_test = False):
     
-    os.makedirs(lora_path, exist_ok=True)
-    logging.basicConfig(filename=os.path.join(lora_path, "log.txt"),
+    logging.basicConfig(filename=os.path.join(lora_path, "es_log.txt"),
                         level=logging.DEBUG,
                         format="%(asctime)s - %(levelname)s - %(message)s",
                         force=True)

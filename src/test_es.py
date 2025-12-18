@@ -102,6 +102,5 @@ if __name__ == "__main__":
     SIGMA=SIGMA,
     ALPHA=ALPHA,
     verbose=True,
-    search_pass_name=search_pass_name, 
     eval_starting_test = starting_test_eval
 )
