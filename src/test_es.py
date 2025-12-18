@@ -36,6 +36,7 @@ if __name__ == "__main__":
     argParser.add_argument('--sigma', default=0.005, type=float, help="Sigma for ES")
     argParser.add_argument('--alpha', default=0.005, type=float, help="Alpha for ES")
     argParser.add_argument('--wandb_project', default="es_grid_search", type=str, help="wandb project name")
+    argParser.add_argument('--starting_test_eval', default=0, type=int, help="whether to perform test set evaluation at the beginning")
     argParser.add_argument('--seed', default=42, type=int, help="Random seed")
     args = argParser.parse_args()
     name = args.name
@@ -50,7 +51,7 @@ if __name__ == "__main__":
     SIGMA = args.sigma
     ALPHA = args.alpha
     project_name_wb = args.wandb_project
-
+    starting_test_eval = bool(int(args.starting_test_eval))
     run = wandb.init(name=name, project=project_name_wb)
     run.config.update(args)
     # Initialize wandb logging
@@ -61,6 +62,7 @@ if __name__ == "__main__":
     wandb_log["min_reward"] = 0.0
     wandb_log["initial_evaluation_reward"] = 0.0
     wandb_log["final_evaluation_reward"] = 0.0   
+    wandb_log["iter_initial_evaluation_reward"] = 0.0
     wandb.log(wandb_log)
     
     if seed:
@@ -101,5 +103,5 @@ if __name__ == "__main__":
     ALPHA=ALPHA,
     verbose=True,
     search_pass_name=search_pass_name, 
-    eval_starting_test = True
+    eval_starting_test = starting_test_eval
 )
