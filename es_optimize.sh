@@ -39,7 +39,8 @@ python "$PYTHON_SCRIPT" \
     --alpha "$ALPHA" \
     --seed "$SEED" \
     --starting_particle_path "$STARTING_PARTICLE" \
-    --wandb_project "$WANDB_PROJECT"
+    --wandb_project "$WANDB_PROJECT" \
+    --starting_test_eval 1
 
 echo "Finished run: $RUN_NAME"
 
