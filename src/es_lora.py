@@ -43,7 +43,7 @@ def force_memory_cleanup():
 def process_seed(seed_args):
     """Function to process a single seed, used for thread pool"""
     seed_idx, seed, SIGMA, lora_path, eval_type, dataset, gpu_id, accelerator, thread_id, verbose = seed_args
-
+    np.random.seed(seed)
     if verbose:
         print(f"Process {accelerator.process_index} Thread {thread_id} processing seed {seed_idx} (value: {seed} lora_path: {lora_path})")
 
@@ -157,9 +157,11 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         force_memory_cleanup()
         log_string = f"Starting iteration {iteration + 1}/{NUM_ITERATIONS}"
         log_with_flush(log_string)
-        if verbose:
-            print(log_string)
-
+        if iteration > 0:
+            iter_initial_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
+            log_string += f"Iteration starting evaluation reward: {iter_initial_reward:.4f}"
+            wandb.log({"iter_initial_evaluation_reward": float(iter_initial_reward)})
+        print(log_string)
         # Generate seeds on main process only
         if accelerator.is_main_process:
             seeds = np.random.randint(0, 2**30, size=POPULATION_SIZE, dtype=np.int64).tolist()
@@ -301,11 +303,10 @@ def es_lora(lora_path, eval_type, dataset, seed, search_pass_name, base_model = 
         log_string = (
             f"Initial reward:          {initial_reward:.4f}\n"
             f"Final reward:            {final_reward:.4f}\n"
-            f"Initial test accuracy:  {initial_test_accuracy:.4f}\n"
+            f"Ending test accuracy:    {ending_test_accuracy:.4f}\n"
         )
         if eval_starting_test:
-            log_string+= f"Ending test accuracy: {ending_test_accuracy:.4f}"
-            
+            log_string+= f"Initial test accuracy:  {initial_test_accuracy:.4f}"
         log_with_flush(log_string)
 
         if verbose:
