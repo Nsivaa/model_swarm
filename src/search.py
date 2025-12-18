@@ -281,7 +281,12 @@ if __name__ == "__main__":
     argParser.add_argument("--dare_ties", default=0, help="whether to use DARE-TIES merging") # 0, 1
     argParser.add_argument("--seed", default=42, help="random seed for reproducibility")
     argParser.add_argument("--eval", default=0, help="whether to set the model to evaluation mode") # 0, 1
-
+    argParser.add_argument("--es_k", default=5, help="performs ES on the best particle every k iterations") # 
+    argParser.add_argument("--es_alpha", default=0.01, help="alpha for ES") #
+    argParser.add_argument("--es_sigma", default=0.01, help="sigma for ES") #
+    argParser.add_argument("--es_pop_size", default=20, help="population size for ES") #
+    argParser.add_argument("--es_num_iterations", default=1, help="number of iterations for ES") #
+    
     args = argParser.parse_args()
     search_pass_name = args.name
     eval_type = args.eval_type
@@ -306,7 +311,11 @@ if __name__ == "__main__":
     use_dare_ties = int(args.dare_ties)
     seed = int(args.seed)
     evaluation_mode = bool(int(args.eval))
-
+    es_k = int(args.es_k)
+    es_alpha = float(args.es_alpha)
+    es_sigma = float(args.es_sigma)
+    es_pop_size = int(args.es_pop_size)
+    es_num_iterations = int(args.es_num_iterations)
     try:
         initial_experts_num = int(args.initial_experts_num)
     except:
@@ -502,6 +511,60 @@ if __name__ == "__main__":
         pool.join()
         log_with_flush("all particles updated! "+current_time_string())
 
+        # perform Evolution strategies on the best particle every k iterations. Substitute the worst particle with the ES result.
+        if es_k > 0 and iter_count % es_k == 0:    
+            # identify the current best and worst particles
+            with open("search/"+search_pass_name+"/utility_scratchpad.json", "r") as f:
+                utility_scratchpad = json.load(f)
+            curr_best = -float('inf')
+            curr_worst = float('inf')
+            for i in range(len(particle_paths)):
+                if utility_scratchpad["particle_" + str(i) + "_now"] > curr_best:
+                    curr_best_particle = i
+                    curr_best = utility_scratchpad["particle_" + str(i) + "_now"]
+                if utility_scratchpad["particle_" + str(i) + "_now"] < curr_worst:
+                    curr_worst_particle = i
+                    curr_worst = utility_scratchpad["particle_" + str(i) + "_now"]
+            # substitute the worst particle with the best particle before ES
+            worst_particle_path = os.path.join("search", search_pass_name, "particle_"+str(curr_worst_particle))
+            best_particle_path = os.path.join("search", search_pass_name, "particle_"+str(curr_best_particle))
+            es_work_path = os.path.join("search", search_pass_name, "es_scratch")
+
+            # Prepare ES scratch copy
+            if os.path.exists(es_work_path):
+                shutil.rmtree(es_work_path)
+            shutil.copytree(best_particle_path, es_work_path)
+            
+            # perform ES on the best particle
+            es_log_string = (f"Iteration:{iter_count}: executing ES on particle {curr_best_particle}\n"
+                             f"Hyperparams: alpha={es_alpha}, sigma={es_sigma}, pop_size={es_pop_size}, num_iterations={es_num_iterations}\n"
+                             f"Before ES: utility={utility_scratchpad['particle_' + str(curr_best_particle) + '_now']}\n")
+            log_with_flush(es_log_string)
+            es_eval, es_out_path = es_lora(
+                lora_path=es_work_path,
+                eval_type=eval_type,
+                dataset=dataset,
+                seed=seed,
+                base_model=base_model,
+                ALPHA=es_alpha,
+                SIGMA=es_sigma,
+                POPULATION_SIZE=es_pop_size,
+                NUM_ITERATIONS=es_num_iterations,
+            )
+            log_with_flush(f"After ES: utility={es_eval}\n Saved to {es_out_path}\n")
+            # Substitute worst particle with ES result if improved
+            if es_eval > curr_worst:
+                # Copy ES result to worst particle
+                if os.path.exists(worst_particle_path):
+                    shutil.rmtree(worst_particle_path)
+                shutil.copytree(es_out_path, worst_particle_path)
+                log_with_flush(f"Particle {curr_worst_particle} substituted with ES result from particle {curr_best_particle}\n")
+            else:
+                log_with_flush(f"ES did not improve over worst particle {curr_worst_particle}. No substitution made.\n")
+            # Clean up ES scratch
+            if os.path.exists(es_work_path):
+                shutil.rmtree(es_work_path)
+        
         # evaluate each particle and update utility_scratchpad and weights
         log_with_flush("evaluating particles...")
 
