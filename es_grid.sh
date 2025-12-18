@@ -10,7 +10,7 @@ PYTHON_SCRIPT="src/test_es.py"
 EVAL_TYPE="multiple_choice"
 DATASET="knowledge_crosswords"
 BASE_MODEL="google/gemma-7b-it"
-INITIAL_EXPERT_DIR="./initial_experts"
+STARTING_PARTICLE="best_checkpoints/paper/hellaswag_{0.2}_{0.1}_{0.2}_{0.1}_{0.8}_aero-k8s-worker1/global_best"
 
 # Hyperparameter grids
 POP_SIZES=(10)
@@ -38,13 +38,13 @@ for POP in "${POP_SIZES[@]}"; do
                     --gpus "0" \
                     --base_model "$BASE_MODEL" \
                     --search_pass_name "$RUN_NAME" \
-                    --initial_expert_directory "$INITIAL_EXPERT_DIR" \
                     --population_size "$POP" \
                     --num_iterations "$ITER" \
                     --sigma "$SIGMA" \
                     --alpha "$ALPHA" \
                     --seed "$SEED" \
-                    --wandb_project "$WANDB_PROJECT"
+                    --wandb_project "$WANDB_PROJECT" \
+                    --starting_particle_path "$STARTING_PARTICLE" 
 
                 echo "Finished run: $RUN_NAME"
             done
