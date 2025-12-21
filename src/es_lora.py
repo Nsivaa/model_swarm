@@ -156,8 +156,14 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
 
     # Load the model
     lora_sd = load_file(os.path.join(lora_path, "adapter_model.safetensors"), device="cpu")
+    # Track best model
     best_iteration_reward = initial_reward 
     best_iteration_index = 0
+    best_lora_sd = {
+    k: v.detach().cpu().clone()
+    for k, v in lora_sd.items()
+    }
+
     # Record total training start time
     training_start_time = time.time()
     for iteration in tqdm(range(NUM_ITERATIONS)):
@@ -168,16 +174,8 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
         force_memory_cleanup()
         log_string = f"Starting iteration {iteration + 1}/{NUM_ITERATIONS}"
         log_with_flush(log_string)
-        if iteration > 0:
-            iter_initial_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
-            log_string += f"Iteration starting evaluation reward: {iter_initial_reward:.4f}"
-            if iter_initial_reward > best_iteration_reward:
-                best_iteration_reward = iter_initial_reward
-                best_iteration_index = iteration
-            wandb.log({"es_iter_initial_evaluation_reward": float(iter_initial_reward),
-                       "es_best_iteration": int(best_iteration_index),
-                       "es_best_iteration_reward": float(best_iteration_reward)})
         print(log_string)
+        # ======= ES REWARD COLLECTION =======
         # Generate seeds on main process only
         if accelerator.is_main_process:
             seeds = np.random.randint(0, 2**30, size=POPULATION_SIZE, dtype=np.int64).tolist()
@@ -276,20 +274,46 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
 
         del rewards_np, rewards_norm
         force_memory_cleanup()
-
+        # --- Evaluate updated model (end of iteration) ---
         if accelerator.is_main_process:
-            log_string = f"Iteration {iteration + 1}/{NUM_ITERATIONS} completed. Time: {iter_time:.2f}s, Mean Reward: {mean_reward:.4f}, Min Reward: {min_reward:.4f}, Max Reward: {max_reward:.4f}"
+
+            iter_reward = evaluate(
+                lora_path, eval_type, dataset, gpu_id, seed=seed
+            )
+
+            if iter_reward > best_iteration_reward:
+                best_iteration_reward = iter_reward
+                best_iteration_index = iteration + 1
+                best_lora_sd = {
+                    k: v.detach().cpu().clone()
+                    for k, v in lora_sd.items()
+                }
+
+            log_string = (
+                f"Iteration {iteration + 1}/{NUM_ITERATIONS} | "
+                f"Reward: {iter_reward:.4f} | "
+                f"Best: {best_iteration_reward:.4f}" 
+                f"(Iteration: {best_iteration_index}) | "
+                f"Mean Reward: {mean_reward:.4f} | "
+                f"Max Reward: {max_reward:.4f} | "
+                f"Min Reward: {min_reward:.4f} | "
+                f"Time: {iter_time:.2f}s"
+            )
             log_with_flush(log_string)
+
+            if verbose:
+                print(log_string)
+
             wandb_log = {
                 "es_iteration": int(iteration + 1),
                 "es_mean_reward": float(mean_reward),
                 "es_max_reward": float(max_reward),
-                "es_min_reward": float(min_reward)
+                "es_min_reward": float(min_reward),
+                "es_iter_end_reward": float(iter_reward),
+                "es_best_iteration": int(best_iteration_index),
+                "es_best_iteration_reward": float(best_iteration_reward)
             }
             wandb.log(wandb_log)
-
-            if verbose:
-                print(log_string)
             
           # print(f"GPU Memory: {torch.cuda.memory_allocated() / 1024**2:.2f}MB allocated, {torch.cuda.max_memory_allocated() / 1024**2:.2f}MB peak")
 
@@ -305,9 +329,22 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
         if verbose:
             print(log_string)
 
+        # Restore best model before final evaluation
+        lora_sd = best_lora_sd
+
+        save_file(
+            lora_sd,
+            os.path.join(lora_path, "adapter_model.safetensors")
+        )
         # --- Final evaluations ---
         final_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
         ending_test_accuracy = evaluate_test(lora_path, eval_type, dataset, gpu_id, seed=seed)
+
+        assert np.isclose(
+            final_reward,
+            best_iteration_reward,
+            atol=1e-6
+        ) , "Final reward does not match best iteration reward!"
 
         # --- WandB logging ---
         wandb.log({
