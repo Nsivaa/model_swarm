@@ -56,13 +56,16 @@ if __name__ == "__main__":
     run.config.update(args)
     # Initialize wandb logging
     wandb_log = {}
-    wandb_log["iteration"] = 0
-    wandb_log["mean_reward"] = 0.0
-    wandb_log["max_reward"] = 0.0
-    wandb_log["min_reward"] = 0.0
-    wandb_log["initial_evaluation_reward"] = 0.0
-    wandb_log["final_evaluation_reward"] = 0.0   
-    wandb_log["iter_initial_evaluation_reward"] = 0.0
+    wandb_log["es_iteration"] = 0
+    wandb_log["es_mean_reward"] = 0.0
+    wandb_log["es_max_reward"] = 0.0
+    wandb_log["es_min_reward"] = 0.0
+    wandb_log["es_initial_evaluation_reward"] = 0.0
+    wandb_log["es_final_evaluation_reward"] = 0.0   
+    wandb_log["es_iter_initial_evaluation_reward"] = 0.0
+    wandb_log["es_best_iteration"] = 0
+    wandb_log["es_best_iteration_reward"] = -math.inf
+
     wandb.log(wandb_log)
     
     if seed:

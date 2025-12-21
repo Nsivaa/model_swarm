@@ -112,10 +112,21 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
              POPULATION_SIZE=30, NUM_ITERATIONS=10, SIGMA=0.001, ALPHA=0.0005, 
              cache_dir='/scratch/a.dicembre/.hf_cache', gpu_id = 0, verbose=False, gpu_threads=1, eval_starting_test = False):
     
-    logging.basicConfig(filename=os.path.join(lora_path, "es_log.txt"),
-                        level=logging.DEBUG,
-                        format="%(asctime)s - %(levelname)s - %(message)s",
-                        force=True)
+    #  logging.basicConfig(filename=os.path.join(lora_path, "log.txt"),
+    #                     level=logging.DEBUG,
+    #                     format="%(asctime)s - %(levelname)s - %(message)s",
+    #                     force=True)
+    
+    wandb_log = {}
+    wandb_log["es_iteration"] = 0
+    wandb_log["es_mean_reward"] = 0.0
+    wandb_log["es_max_reward"] = 0.0
+    wandb_log["es_min_reward"] = 0.0
+    wandb_log["es_initial_evaluation_reward"] = 0.0
+    wandb_log["es_final_evaluation_reward"] = 0.0   
+    wandb_log["es_iter_initial_evaluation_reward"] = 0.0
+    wandb_log["es_best_iteration"] = 0
+    wandb.log(wandb_log)
 
     accelerator = Accelerator()
     if accelerator.is_main_process:
@@ -136,16 +147,17 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
     if eval_starting_test:
         initial_test_accuracy = evaluate_test(lora_path, eval_type, dataset, gpu_id, seed=seed)
         log_string += f"Initial test accuracy: {initial_test_accuracy:.4f}"
-        wandb.log({"initial_test_accuracy": float(initial_test_accuracy)})
+        wandb.log({"es_initial_test_accuracy": float(initial_test_accuracy)})
 
     log_with_flush(log_string)
     print(log_string)
-    wandb.log({"initial_evaluation_reward": float(initial_reward)})
+    wandb.log({"es_initial_evaluation_reward": float(initial_reward)})
     # -------------------------------------
 
     # Load the model
     lora_sd = load_file(os.path.join(lora_path, "adapter_model.safetensors"), device="cpu")
-
+    best_iteration_reward = initial_reward 
+    best_iteration_index = 0
     # Record total training start time
     training_start_time = time.time()
     for iteration in tqdm(range(NUM_ITERATIONS)):
@@ -159,7 +171,12 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
         if iteration > 0:
             iter_initial_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
             log_string += f"Iteration starting evaluation reward: {iter_initial_reward:.4f}"
-            wandb.log({"iter_initial_evaluation_reward": float(iter_initial_reward)})
+            if iter_initial_reward > best_iteration_reward:
+                best_iteration_reward = iter_initial_reward
+                best_iteration_index = iteration
+            wandb.log({"es_iter_initial_evaluation_reward": float(iter_initial_reward),
+                       "es_best_iteration": int(best_iteration_index),
+                       "es_best_iteration_reward": float(best_iteration_reward)})
         print(log_string)
         # Generate seeds on main process only
         if accelerator.is_main_process:
@@ -264,10 +281,10 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
             log_string = f"Iteration {iteration + 1}/{NUM_ITERATIONS} completed. Time: {iter_time:.2f}s, Mean Reward: {mean_reward:.4f}, Min Reward: {min_reward:.4f}, Max Reward: {max_reward:.4f}"
             log_with_flush(log_string)
             wandb_log = {
-                "iteration": int(iteration + 1),
-                "mean_reward": float(mean_reward),
-                "max_reward": float(max_reward),
-                "min_reward": float(min_reward)
+                "es_iteration": int(iteration + 1),
+                "es_mean_reward": float(mean_reward),
+                "es_max_reward": float(max_reward),
+                "es_min_reward": float(min_reward)
             }
             wandb.log(wandb_log)
 
@@ -294,8 +311,8 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
 
         # --- WandB logging ---
         wandb.log({
-            "final_evaluation_reward": float(final_reward),
-            "ending_test_accuracy": float(ending_test_accuracy),
+            "es_final_evaluation_reward": float(final_reward),
+            "es_ending_test_accuracy": float(ending_test_accuracy),
         })
 
         # --- Final summary log ---
