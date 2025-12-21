@@ -258,7 +258,7 @@ if __name__ == "__main__":
     argParser.add_argument("--dropout_rate", default = 0.3, help="dropout rate for DARE merging")
     argParser.add_argument("-p", "--patience", default = 10, help="patience of the search")
     argParser.add_argument("-m", "--max_iteration", default = 200, help="max iteration of the search")
-    argParser.add_argument("--weight_randomness", default = 1, help="whether to use weight randomess") # 0, 1
+    argParser.add_argument("--weight_randomness", default = 1, help="whether to use weight randomness") # 0, 1
     argParser.add_argument("-i", "--initial_expert_directory", default="./initial_experts", help="initial expert directory") # make it a directory of initial expert checkpoints, see initial_experts/ for example
     argParser.add_argument("-b", "--base_model", default="google/gemma-7b-it", help="base model of the lora experts")
     argParser.add_argument("--starting_test_set_eval", default=1, help="starting test set evaluation") # 0, 1
@@ -285,7 +285,7 @@ if __name__ == "__main__":
     argParser.add_argument("--es_alpha", default=0.01, help="alpha for ES") #
     argParser.add_argument("--es_sigma", default=0.01, help="sigma for ES") #
     argParser.add_argument("--es_pop_size", default=20, help="population size for ES") #
-    argParser.add_argument("--es_num_iterations", default=1, help="number of iterations for ES") #
+    argParser.add_argument("--es_num_iterations", default=3, help="number of iterations for ES") #
     
     args = argParser.parse_args()
     search_pass_name = args.name
@@ -355,10 +355,13 @@ if __name__ == "__main__":
     with open(os.path.join("search", args.name, "args.txt"), "w") as f:
         f.write(str(args))
 
-
     run = wandb.init(name=search_pass_name, project=project_name_wb)
     run.config.update(args)
-    torch.multiprocessing.set_start_method('spawn')
+    try:
+        torch.multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
+
     if seed:
         random.seed(seed)
         np.random.seed(seed)
@@ -541,7 +544,7 @@ if __name__ == "__main__":
                              f"Before ES: utility={utility_scratchpad['particle_' + str(curr_best_particle) + '_now']}\n")
             log_with_flush(es_log_string)
             es_eval, es_out_path = es_lora(
-                lora_path=es_work_path,
+                lora_path=os.path.join(es_work_path, "now"),
                 eval_type=eval_type,
                 dataset=dataset,
                 seed=seed,
@@ -553,14 +556,28 @@ if __name__ == "__main__":
             )
             log_with_flush(f"After ES: utility={es_eval}\n Saved to {es_out_path}\n")
             # Substitute worst particle with ES result if improved
-            if es_eval > curr_worst:
-                # Copy ES result to worst particle
+            if es_eval > curr_best:
+                # Replace worst particle with clone of best
                 if os.path.exists(worst_particle_path):
                     shutil.rmtree(worst_particle_path)
-                shutil.copytree(es_out_path, worst_particle_path)
-                log_with_flush(f"Particle {curr_worst_particle} substituted with ES result from particle {curr_best_particle}\n")
+                shutil.copytree(best_particle_path, worst_particle_path)
+
+                # Overwrite 'now' with ES result
+                worst_now_path = os.path.join(worst_particle_path, "now")
+                if os.path.exists(worst_now_path):
+                    shutil.rmtree(worst_now_path)
+                shutil.copytree(es_out_path, worst_now_path)
+
+                log_with_flush(
+                    f"Particle {curr_worst_particle} replaced by ES-refined clone "
+                    f"of particle {curr_best_particle}\n"
+                )
             else:
-                log_with_flush(f"ES did not improve over worst particle {curr_worst_particle}. No substitution made.\n")
+                log_with_flush(
+                    f"ES did not improve over best particle {curr_best_particle}. "
+                    f"No substitution made.\n"
+                )
+
             # Clean up ES scratch
             if os.path.exists(es_work_path):
                 shutil.rmtree(es_work_path)
