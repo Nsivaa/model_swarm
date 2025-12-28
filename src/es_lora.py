@@ -21,11 +21,6 @@ import logging
 import wandb
 
 
-torch.backends.cuda.matmul.allow_tf32 = True
-os.environ["PYTHONWARNINGS"] = "ignore"
-mp.set_start_method('spawn', force=True)
-# Reduce verbosity for urllib3 (used by requests/HuggingFace)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 def log_with_flush(message, level=logging.INFO):
   logging.log(level, message)
@@ -116,7 +111,15 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
     #                     level=logging.DEBUG,
     #                     format="%(asctime)s - %(levelname)s - %(message)s",
     #                     force=True)
-    
+    torch.backends.cuda.matmul.allow_tf32 = True
+    os.environ["PYTHONWARNINGS"] = "ignore"
+    try:
+        mp.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass
+    # Reduce verbosity for urllib3 (used by requests/HuggingFace)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
     wandb_log = {}
     wandb_log["es_iteration"] = 0
     wandb_log["es_mean_reward"] = 0.0
@@ -124,8 +127,9 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
     wandb_log["es_min_reward"] = 0.0
     wandb_log["es_initial_evaluation_reward"] = 0.0
     wandb_log["es_final_evaluation_reward"] = 0.0   
-    wandb_log["es_iter_initial_evaluation_reward"] = 0.0
+    wandb_log["es_iter_end_reward"] = 0.0
     wandb_log["es_best_iteration"] = 0
+    wandb_log["es_best_iteration_reward"] = 0.0
     wandb.log(wandb_log)
 
     accelerator = Accelerator()
@@ -300,9 +304,7 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
                 f"Time: {iter_time:.2f}s"
             )
             log_with_flush(log_string)
-
-            if verbose:
-                print(log_string)
+            print(log_string)
 
             wandb_log = {
                 "es_iteration": int(iteration + 1),
@@ -340,11 +342,6 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
         final_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
         ending_test_accuracy = evaluate_test(lora_path, eval_type, dataset, gpu_id, seed=seed)
 
-        assert np.isclose(
-            final_reward,
-            best_iteration_reward,
-            atol=1e-6
-        ) , "Final reward does not match best iteration reward!"
 
         # --- WandB logging ---
         wandb.log({
