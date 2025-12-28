@@ -281,6 +281,7 @@ if __name__ == "__main__":
     argParser.add_argument("--dare_ties", default=0, help="whether to use DARE-TIES merging") # 0, 1
     argParser.add_argument("--seed", default=42, help="random seed for reproducibility")
     argParser.add_argument("--eval", default=0, help="whether to set the model to evaluation mode") # 0, 1
+    argParser.add_argument("--es", default=0, help="whether to use Evolution Strategies during the search") # 0, 1
     argParser.add_argument("--es_k", default=5, help="performs ES on the best particle every k iterations") # 
     argParser.add_argument("--es_alpha", default=0.01, help="alpha for ES") #
     argParser.add_argument("--es_sigma", default=0.01, help="sigma for ES") #
@@ -311,6 +312,7 @@ if __name__ == "__main__":
     use_dare_ties = int(args.dare_ties)
     seed = int(args.seed)
     evaluation_mode = bool(int(args.eval))
+    use_es = bool(int(args.es))
     es_k = int(args.es_k)
     es_alpha = float(args.es_alpha)
     es_sigma = float(args.es_sigma)
@@ -441,7 +443,7 @@ if __name__ == "__main__":
             log_with_flush("particle_"+str(i)+": "+str(results[i]))
 
     log_with_flush("starting search... "+current_time_string())
-
+    evolved_particles_count = 0
     # main search iteration
     iter_count = 0
     while iter_count < max_iteration:
@@ -514,8 +516,8 @@ if __name__ == "__main__":
         pool.join()
         log_with_flush("all particles updated! "+current_time_string())
 
-        # perform Evolution strategies on the best particle every k iterations. Substitute the worst particle with the ES result.
-        if es_k > 0 and iter_count % es_k == 0:    
+        # perform Evolution strategies on the best particle every k iterations. Substitute the worst particle with the ES result if best is improved.
+        if use_es and es_k > 0 and iter_count % es_k == 0:    
             # identify the current best and worst particles
             with open("search/"+search_pass_name+"/utility_scratchpad.json", "r") as f:
                 utility_scratchpad = json.load(f)
@@ -572,6 +574,7 @@ if __name__ == "__main__":
                     f"Particle {curr_worst_particle} replaced by ES-refined clone "
                     f"of particle {curr_best_particle}\n"
                 )
+                evolved_particles_count += 1
             else:
                 log_with_flush(
                     f"ES did not improve over best particle {curr_best_particle}. "
@@ -660,6 +663,7 @@ if __name__ == "__main__":
             wandb_log["particle_" + str(i) + "_now"] = utility_scratchpad["particle_" + str(i) + "_now"]
         
         wandb_log["iterations"] = int(iter_count)
+        wandb_log["evolved_particles_count"] = int(evolved_particles_count)
         wandb.log(wandb_log)
         
         with open("search/"+search_pass_name+"/utility_scratchpad.json", "w") as f:
