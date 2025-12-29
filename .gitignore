@@ -6,6 +6,7 @@ data/outputs/*
 good_model_checkpoints/*
 wandb/
 probs/
+src/init.py
 initial_experts/*
 initial_experts_full/
 initial_experts_mistral/
