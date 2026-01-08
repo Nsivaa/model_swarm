@@ -577,6 +577,35 @@ if __name__ == "__main__":
                     shutil.rmtree(worst_now_path)
                 shutil.copytree(es_out_path, worst_now_path)
 
+                # initialize new particle velocity to zero
+                lora_merge(
+                    weights=[0],
+                    lora_name_list=[worst_now_path],
+                    output_name=os.path.join(worst_particle_path, "velocity"),
+                    gpu_id=gpus[assign_gpu(len(gpus), curr_worst_particle, len(particle_paths))],
+                    directly_load_safetensors=fast_merge
+                )
+                # ---------sanity check----------------
+                # sanity check: velocity LoRA should be (almost) zero
+                velocity_path = os.path.join(worst_particle_path, "velocity", "adapter_model.safetensors")
+                state_dict = load_file(velocity_path, device="cpu")
+
+                max_abs = 0.0
+                for k, v in state_dict.items():
+                    max_abs = max(max_abs, v.abs().max().item())
+
+                if max_abs > 1e-6:
+                    log_with_flush(
+                        f"[WARN] Velocity initialization not zeroed! "
+                        f"max |param| = {max_abs} for particle {curr_worst_particle}"
+                    )
+                else:
+                    log_with_flush(
+                        f"Velocity correctly zero-initialized for particle {curr_worst_particle} "
+                        f"(max |param| = {max_abs})"
+                    )
+                # ------------------------------------
+
                 log_with_flush(
                     f"Particle {curr_worst_particle} replaced by ES-refined clone "
                     f"of particle {curr_best_particle}\n"
