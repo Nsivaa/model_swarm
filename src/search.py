@@ -305,11 +305,11 @@ if __name__ == "__main__":
     weight_randomness = int(args.weight_randomness)
     initial_expert_directory = args.initial_expert_directory
     base_model = args.base_model
-    starting_test_set_eval = int(args.starting_test_set_eval)
+    starting_test_set_eval = bool(int(args.starting_test_set_eval))
     fast_merge = int(args.fast_merge)
     project_name_wb = args.project_name_wb
     populate_initial_experts = int(args.populate_initial_experts)
-    use_dare_ties = int(args.dare_ties)
+    use_dare_ties = bool(int(args.dare_ties))
     seed = int(args.seed)
     evaluation_mode = bool(int(args.eval))
     use_es = bool(int(args.es))
@@ -328,7 +328,7 @@ if __name__ == "__main__":
     minimum_step_length = float(args.minimum_step_length)
     restart_stray_particles = int(args.restart_stray_particles)
     restart_patience = float(args.restart_patience)
-    clean_up_on_end = int(args.clean_up_on_end)
+    clean_up_on_end = bool(int(args.clean_up_on_end))
     only_one_or_two = args.only_one_or_two
     update_only_one_or_two(only_one_or_two)
     to_visualize_flag = args.to_visualize
@@ -364,15 +364,22 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
+    # Configure logging to write to a file
+    logging.basicConfig(
+        filename=os.path.join("search", search_pass_name, "log.txt"),
+        level=logging.DEBUG,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        force=True
+    )
+    
     if seed:
+        log_with_flush("setting seed: " + str(seed))
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-    # Configure logging to write to a file
-    logging.basicConfig(filename=os.path.join("search", search_pass_name, "log.txt"), level=logging.DEBUG)
 
     gpus = [int(gpu) for gpu in gpus.split(",")]
     particle_paths = []
@@ -718,7 +725,7 @@ if __name__ == "__main__":
         log_with_flush("particle_"+str(i)+": "+str(results[i]))
 
     final_metrics = overall_metrics(search_pass_name, eval_type, initial_experts_num = len(particle_paths))
-
+    log_with_flush("final metrics computed 1: "+str(final_metrics))
     if eval_type == "AbstainQA":
         best_particle_idx = final_metrics["ending_best_particle_on_validation"]
         final_metrics["ending_best_single_test_accuracy"] = results[best_particle_idx]
@@ -797,6 +804,8 @@ if __name__ == "__main__":
             os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores.json"))
 
     final_metrics = overall_metrics(search_pass_name, eval_type)
+    log_with_flush("final metrics computed 2: "+str(final_metrics))
+
     dev_final_metrics = {
         "starting_top-k_ensemble_dev_accuracy": final_metrics["starting_top-k_ensemble_test_accuracy"],
         "ending_top-k_ensemble_dev_accuracy": final_metrics["ending_top-k_ensemble_test_accuracy"]

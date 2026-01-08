@@ -8,15 +8,15 @@ PYTHON_SCRIPT="src/test_es.py"
 
 # Common arguments
 EVAL_TYPE="multiple_choice"
-DATASET="knowledge_crosswords"
+DATASET="hellaswag"
 BASE_MODEL="google/gemma-7b-it"
-STARTING_PARTICLE="best_checkpoints/paper/hellaswag_{0.2}_{0.1}_{0.2}_{0.1}_{0.8}_aero-k8s-worker1/global_best"
+STARTING_PARTICLE="initial_experts/flan_v2"
 
 # Hyperparameter grids
-POP_SIZES=(10)
-NUM_ITERATIONS=(3)
-SIGMAS=(0.005 0.01)
-ALPHAS=(0.0005 0.001 0.005 0.01)
+POP_SIZES=(15)
+NUM_ITERATIONS=(5)
+SIGMAS=(0.05	0.01	0.005	0.001 0.0005)
+ALPHAS=(0.0005 0.005 0.01 0.02 0.05 0.1)
 
 # Optional WandB project
 WANDB_PROJECT="es_grid_search"
