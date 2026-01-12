@@ -39,6 +39,7 @@ def process_seed(seed_args):
     """Function to process a single seed, used for thread pool"""
     seed_idx, seed, SIGMA, lora_path, eval_type, dataset, gpu_id, accelerator, thread_id, verbose = seed_args
     np.random.seed(seed)
+    torch.manual_seed(seed)
     if verbose:
         print(f"Process {accelerator.process_index} Thread {thread_id} processing seed {seed_idx} (value: {seed} lora_path: {lora_path})")
 
@@ -111,6 +112,8 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
     #                     level=logging.DEBUG,
     #                     format="%(asctime)s - %(levelname)s - %(message)s",
     #                     force=True)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     torch.backends.cuda.matmul.allow_tf32 = True
     os.environ["PYTHONWARNINGS"] = "ignore"
     try:
@@ -142,8 +145,6 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
     lora_list = []
     for _ in range(gpu_threads):
         lora_list.append(lora_path)
-    
-    np.random.seed(seed)
 
     # ------ Initial evaluation ------ 
     initial_reward = evaluate(lora_path, eval_type, dataset, gpu_id, seed=seed)
@@ -170,13 +171,15 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
 
     # Record total training start time
     training_start_time = time.time()
-    for iteration in tqdm(range(NUM_ITERATIONS)):
+    iteration = 0
+    while iteration < NUM_ITERATIONS:
+        iteration += 1
         # Record iteration start time
         iter_start_time = time.time()
 
         # Force garbage collection
         force_memory_cleanup()
-        log_string = f"Starting iteration {iteration + 1}/{NUM_ITERATIONS}"
+        log_string = f"Starting iteration {iteration}/{NUM_ITERATIONS}"
         log_with_flush(log_string)
         print(log_string)
         # ======= ES REWARD COLLECTION =======
@@ -287,14 +290,14 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
 
             if iter_reward > best_iteration_reward:
                 best_iteration_reward = iter_reward
-                best_iteration_index = iteration + 1
+                best_iteration_index = iteration
                 best_lora_sd = {
                     k: v.detach().cpu().clone()
                     for k, v in lora_sd.items()
                 }
 
             log_string = (
-                f"Iteration {iteration + 1}/{NUM_ITERATIONS} | "
+                f"Iteration {iteration}/{NUM_ITERATIONS} | "
                 f"Reward: {iter_reward:.4f} | "
                 f"Best: {best_iteration_reward:.4f}" 
                 f"(Iteration: {best_iteration_index}) | "
@@ -307,7 +310,7 @@ def es_lora(lora_path, eval_type, dataset, seed, base_model = "google/gemma-7b-i
             print(log_string)
 
             wandb_log = {
-                "es_iteration": int(iteration + 1),
+                "es_iteration": int(iteration),
                 "es_mean_reward": float(mean_reward),
                 "es_max_reward": float(max_reward),
                 "es_min_reward": float(min_reward),
