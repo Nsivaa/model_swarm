@@ -151,6 +151,165 @@ def initialize_search_records(search_pass_name, particle_paths, eval_type, datas
         pool.close()
         pool.join()
 
+def reinitialize_search_from_particles(
+    search_pass_name,
+    particle_source_dirs,
+    eval_type,
+    dataset,
+    gpus,
+    base_model,
+    fast_merge,
+    starting_velocity_mode,
+    seed=None,
+    reset_personal_best=True):
+    num_particles = len(particle_source_dirs)
+    search_dir = os.path.join("search", search_pass_name)
+
+    # Clear non-particle state
+    for item in os.listdir(search_dir):
+        if item.startswith("particle_"):
+            continue
+        shutil.rmtree(os.path.join(search_dir, item), ignore_errors=True)
+        
+    # Reset particle semantic state
+    for i, src in enumerate(particle_source_dirs):
+        pdir = os.path.join(search_dir, f"particle_{i}")
+
+        # wipe semantic state
+        shutil.rmtree(os.path.join(pdir, "velocity"), ignore_errors=True)
+        shutil.rmtree(os.path.join(pdir, "personal_best"), ignore_errors=True)
+
+        os.makedirs(os.path.join(pdir, "velocity"), exist_ok=True)
+        os.makedirs(os.path.join(pdir, "personal_best"), exist_ok=True)
+
+        if reset_personal_best:
+            shutil.copytree(
+                os.path.join(pdir, "now"),
+                os.path.join(pdir, "personal_best"),
+                dirs_exist_ok=True
+            )
+    # Fresh scratchpad
+    utility_scratchpad = {
+    "g": None,
+    "g_worst": None,
+    "g_history": [],
+    }
+
+    for i in range(num_particles):
+        utility_scratchpad[f"particle_{i}_now"] = None
+        utility_scratchpad[f"particle_{i}_best"] = None
+        utility_scratchpad[f"particle_{i}_history"] = []
+
+    with open(os.path.join(search_dir, "utility_scratchpad.json"), "w") as f:
+        json.dump(utility_scratchpad, f, indent=4)
+
+    # Sanity check
+    assert num_particles == len(
+    [d for d in os.listdir(search_dir) if d.startswith("particle_")])
+
+    # Velocity init (same logic as fresh run, but using num_particles)
+    # initialize particle now velocity
+    if starting_velocity_mode == "zero":
+        merge_args = []
+        for i in range(num_particles):
+            merge_args.append(([0], [os.path.join("search", search_pass_name, "particle_"+str(i), "now")], 
+                os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), 
+                gpus[assign_gpu(len(gpus), i, num_particles)], fast_merge, seed
+                ))
+
+        pool = Pool(processes=1)
+        pool.starmap(lora_merge, merge_args, chunksize=math.ceil(num_particles/len(gpus)))
+        pool.close()
+        pool.join()
+    # the default setting
+    elif starting_velocity_mode == "random":
+        merge_args = []
+        for i in range(num_particles):
+            secret_lover_id = random.randint(0, num_particles-1)
+            while secret_lover_id == i:
+                secret_lover_id = random.randint(0, num_particles-1)
+            merge_args.append(([-1, 1], [os.path.join("search", search_pass_name, "particle_"+str(i), "now"), 
+                os.path.join("search", search_pass_name, "particle_"+str(secret_lover_id), "now")],
+                os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), 
+                gpus[assign_gpu(len(gpus), i, num_particles)], fast_merge
+                ))
+        
+        pool = Pool(processes=1)
+        pool.starmap(lora_merge, merge_args, chunksize=math.ceil(num_particles/len(gpus)))
+        pool.close()
+        pool.join()
+    elif starting_velocity_mode == "best":
+        # wait for starting validation utility eval
+        pass
+
+    # Evaluate + initialize global best/worst
+    # evaluate the utility of starting particles
+    eval_args = []
+    for i in range(num_particles):
+        eval_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), 
+            eval_type, dataset, gpus[assign_gpu(len(gpus), i, num_particles)], 
+            base_model, True, None, False, seed
+            ))
+    
+    pool = Pool(processes=len(gpus))
+    results = pool.starmap(evaluate, eval_args, chunksize=math.ceil(num_particles/len(gpus)))
+    pool.close()
+    pool.join()
+
+    with open(os.path.join("search", search_pass_name, "utility_scratchpad.json")) as f:
+        utility_scratchpad = json.load(f)
+
+    utility_scratchpad["g"] = max(results)
+    utility_scratchpad["g_worst"] = min(results)
+    utility_scratchpad["g_history"].append(utility_scratchpad["g"])
+    utility_scratchpad["iteration"] = 0
+
+    for i in range(num_particles):
+        utility_scratchpad[f"particle_{i}_now"] = results[i]
+        utility_scratchpad[f"particle_{i}_best"] = results[i]
+        utility_scratchpad[f"particle_{i}_history"].append(results[i])
+
+    # logging at iteration=0
+    try:
+        wandb_log = {
+            "g": utility_scratchpad["g"],
+            "g_worst": utility_scratchpad["g_worst"],
+        }
+        for i in range(num_particles):
+            wandb_log["particle_" + str(i) + "_now"] = utility_scratchpad["particle_" + str(i) + "_now"]
+        wandb.log(wandb_log)
+    except:
+        pass
+
+    with open(os.path.join("search", search_pass_name, "utility_scratchpad.json"), "w") as f:
+        json.dump(utility_scratchpad, f, indent=4)
+    
+    shutil.rmtree(os.path.join(search_dir, "global_best"), ignore_errors=True)
+    shutil.rmtree(os.path.join(search_dir, "global_worst"), ignore_errors=True)
+
+    # initialize global best checkpoint
+    best_idx = results.index(max(results))
+    shutil.copytree(os.path.join("search", search_pass_name, "particle_"+str(best_idx), "now"), os.path.join("search", search_pass_name, "global_best"), dirs_exist_ok=True)
+
+    # initialize global worst checkpoint
+    worst_idx = results.index(min(results))
+    shutil.copytree(os.path.join("search", search_pass_name, "particle_"+str(worst_idx), "now"), os.path.join("search", search_pass_name, "global_worst"), dirs_exist_ok=True)
+
+    if starting_velocity_mode == "best":
+        global_best_path = os.path.join("search", search_pass_name, "global_best")
+        merge_args = []
+        for i in range(num_particles):
+            merge_args.append(([-1, 1], [os.path.join("search", search_pass_name, "particle_"+str(i), "now"), global_best_path], 
+            os.path.join("search", search_pass_name, "particle_"+str(i), "velocity"), 
+            gpus[assign_gpu(len(gpus), i, num_particles)], fast_merge, seed
+            ))
+        
+        pool = Pool(processes=1)
+        pool.starmap(lora_merge, merge_args, chunksize=math.ceil(num_particles/len(gpus)))
+        pool.close()
+        pool.join()
+
+    
 # the main juice of the Model Swarms search: update velocity then update position of particles
 def particle_update(i, gpu_id, search_pass_name, weight_randomness, inertia, cognitive_coeff, social_coeff, repel_coeff, fast_merge, step_length, repel_term, restart_flag, seed=None):
 
@@ -460,6 +619,7 @@ if __name__ == "__main__":
         # main search iteration
         iter_count = 0
     else:
+        
         log_with_flush("continuing from existing search directory...")
         # load existing iteration count
         with open(os.path.join("search", search_pass_name, "utility_scratchpad.json")) as f:
