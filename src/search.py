@@ -287,7 +287,8 @@ if __name__ == "__main__":
     argParser.add_argument("--es_sigma", default=0.01, help="sigma for ES") #
     argParser.add_argument("--es_pop_size", default=20, help="population size for ES") #
     argParser.add_argument("--es_num_iterations", default=3, help="number of iterations for ES") #
-    
+    argParser.add_argument("--continue_from", default=None, help="continue from an existing search directory") # directory name in search/
+
     args = argParser.parse_args()
     search_pass_name = args.name
     eval_type = args.eval_type
@@ -308,7 +309,7 @@ if __name__ == "__main__":
     starting_test_set_eval = bool(int(args.starting_test_set_eval))
     fast_merge = int(args.fast_merge)
     project_name_wb = args.project_name_wb
-    populate_initial_experts = int(args.populate_initial_experts)
+    populate_initial_experts = bool(int(args.populate_initial_experts))
     use_dare_ties = bool(int(args.dare_ties))
     seed = int(args.seed)
     evaluation_mode = bool(int(args.eval))
@@ -318,6 +319,7 @@ if __name__ == "__main__":
     es_sigma = float(args.es_sigma)
     es_pop_size = int(args.es_pop_size)
     es_num_iterations = int(args.es_num_iterations)
+    continue_from = args.continue_from
     try:
         initial_experts_num = int(args.initial_experts_num)
     except:
@@ -347,12 +349,15 @@ if __name__ == "__main__":
     }
     
     # create search directory
-
-    if os.path.exists(os.path.join("search", search_pass_name)):
-        search_pass_name += current_time_string().replace(" ", "_")
-        # exit("search directory already exists!")
-    os.mkdir(os.path.join("search", search_pass_name))
-
+    if continue_from:
+        search_pass_name = continue_from
+        log_with_flush(f"Continuing from {continue_from} checkpoint \n")
+        populate_initial_experts = 0
+    else:
+        if os.path.exists(os.path.join("search", search_pass_name)):
+            search_pass_name += current_time_string().replace(" ", "_")
+            # exit("search directory already exists!")
+        os.mkdir(os.path.join("search", search_pass_name))
     # write args to file
     with open(os.path.join("search", args.name, "args.txt"), "w") as f:
         f.write(str(args))
@@ -387,7 +392,6 @@ if __name__ == "__main__":
         if os.path.isdir(os.path.join(initial_expert_directory, particle_path)):
             particle_paths.append(os.path.join(initial_expert_directory, particle_path))
     particle_paths = sorted(particle_paths)
-
     # populate initial experts
     if populate_initial_experts and initial_experts_num and len(particle_paths) < initial_experts_num:
         log_with_flush("populating initial experts...")
@@ -425,34 +429,48 @@ if __name__ == "__main__":
             particle_trajectory[i] = []
 
     log_with_flush("initializing search... " + current_time_string())
-    initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode, seed)
-    log_with_flush("search initialized")
-    for i in range(len(particle_paths)):
-        log_with_flush("expert " + str(i) + ": " + particle_paths[i])
 
-    if os.path.exists(os.path.join("search", search_pass_name, "tmp")):
-        shutil.rmtree(os.path.join("search", search_pass_name, "tmp"))
-
-    # test set evaluation
-    if starting_test_set_eval:
-        eval_test_args = []
+    if not continue_from:
+        initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode, seed)
+        log_with_flush("search initialized")
         for i in range(len(particle_paths)):
-            eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, 
-            dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed, evaluation_mode))
+            log_with_flush("expert " + str(i) + ": " + particle_paths[i])
 
-        pool = Pool(processes=len(gpus))
-        results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
-        pool.close()
-        pool.join()
+        if os.path.exists(os.path.join("search", search_pass_name, "tmp")):
+            shutil.rmtree(os.path.join("search", search_pass_name, "tmp"))
 
-        log_with_flush("Test set results:")
-        for i in range(len(particle_paths)):
-            log_with_flush("particle_"+str(i)+": "+str(results[i]))
+        # test set evaluation
+        if starting_test_set_eval:
+            eval_test_args = []
+            for i in range(len(particle_paths)):
+                eval_test_args.append((os.path.join("search", search_pass_name, "particle_"+str(i), "now"), eval_type, 
+                dataset, gpus[assign_gpu(len(gpus), i, len(particle_paths))], base_model, None, False, seed, evaluation_mode))
 
-    log_with_flush("starting search... "+current_time_string())
-    evolved_particles_count = 0
-    # main search iteration
-    iter_count = 0
+            pool = Pool(processes=len(gpus))
+            results = pool.starmap(evaluate_test, eval_test_args, chunksize=math.ceil(len(particle_paths)/len(gpus)))
+            pool.close()
+            pool.join()
+
+            log_with_flush("Test set results:")
+            for i in range(len(particle_paths)):
+                log_with_flush("particle_"+str(i)+": "+str(results[i]))
+
+        log_with_flush("starting search... "+current_time_string())
+        evolved_particles_count = 0
+        # main search iteration
+        iter_count = 0
+    else:
+        log_with_flush("continuing from existing search directory...")
+        # load existing iteration count
+        with open(os.path.join("search", search_pass_name, "utility_scratchpad.json")) as f:
+            utility_scratchpad = json.load(f)
+        g_history = utility_scratchpad["g_history"]
+        iter_count = len(g_history)
+        log_with_flush("loaded iteration count: " + str(iter_count))
+        evolved_particles_count = 0
+        log_with_flush("continuing search... "+current_time_string())
+    
+    
     while iter_count < max_iteration:
         iter_count += 1
         log_with_flush("--------------------------")
@@ -703,7 +721,7 @@ if __name__ == "__main__":
     for i in range(len(particle_paths)):
         if utility_scratchpad["particle_" + str(i) + "_best"] == g_best:
             global_best_particle = i
-    log_with_flush("global best particle: "+str(global_best_particle))
+            log_with_flush("global best particle: "+str(global_best_particle))
 
     # dev set evaluation for personal bests
     eval_args = []
@@ -735,6 +753,7 @@ if __name__ == "__main__":
 
     final_metrics = overall_metrics(search_pass_name, eval_type, initial_experts_num = len(particle_paths))
     log_with_flush("final metrics computed 1: "+str(final_metrics))
+    
     if eval_type == "AbstainQA":
         best_particle_idx = final_metrics["ending_best_particle_on_validation"]
         final_metrics["ending_best_single_test_accuracy"] = results[best_particle_idx]
