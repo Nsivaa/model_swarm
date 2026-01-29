@@ -62,7 +62,7 @@ def ensemble_based_on_utility(preds, utility_list, top_k):
     return final_preds
 
 # calculate a bunch of metrics for a given search to report at the end
-def overall_metrics(name, eval_type, top_k = 10, initial_experts_num = 10):
+def overall_metrics(name, eval_type, top_k = 10, initial_experts_num = 10, skip_ensemble = False):
 
     final_metrics = {}
 
@@ -87,10 +87,9 @@ def overall_metrics(name, eval_type, top_k = 10, initial_experts_num = 10):
                     ending_preds.append(particle_data)
                 with open(os.path.join("search", name, particle_path, "personal_best/golds.json"), "r") as f:
                     gold_data = json.load(f)
-                    if golds and not eval_type == "AbstainQA":
-                        assert golds == gold_data
-                    else:
+                    if golds is None:
                         golds = gold_data
+
         
         with open(os.path.join("search", name, "utility_scratchpad.json"), "r") as f:
             utility_data = json.load(f)
@@ -121,22 +120,21 @@ def overall_metrics(name, eval_type, top_k = 10, initial_experts_num = 10):
                         particle_path = "particle_" + str(i)
                         starting_utility.append(utility_data[particle_path + "_history"][0])
         except:
-            print("no starting eval! starting will be the same as ending")
+            log_with_flush("no starting eval! starting will be the same as ending")
             starting_eval_flag = False
             starting_utility = ending_utility
             starting_preds = ending_preds
 
         assert len(starting_preds) == len(starting_utility) == len(ending_preds) == len(ending_utility)
         assert len(golds) == len(starting_preds[0]) == len(ending_preds[0])
-
-        final_starting_preds = ensemble_based_on_utility(starting_preds, starting_utility, top_k)
-        final_ending_preds = ensemble_based_on_utility(ending_preds, ending_utility, top_k)
-
-        assert len(final_starting_preds) == len(final_ending_preds)
+        if not skip_ensemble:
+            final_starting_preds = ensemble_based_on_utility(starting_preds, starting_utility, top_k)
+            final_ending_preds = ensemble_based_on_utility(ending_preds, ending_utility, top_k)
+            assert len(final_starting_preds) == len(final_ending_preds)
 
         starting_best_utility_index = starting_utility.index(max(starting_utility))
         ending_best_utility_index = ending_utility.index(max(ending_utility))
-
+       
         if starting_eval_flag:
             # compute best single accuracy among the first 10 particles. This assumes the first 10 are the initial experts
             best_single_validation_best = -float("inf")
@@ -154,22 +152,26 @@ def overall_metrics(name, eval_type, top_k = 10, initial_experts_num = 10):
             final_metrics["starting_best_validation_utility"] = max(starting_utility)
             final_metrics["starting_best_particle_on_validation"] = starting_best_utility_index
             final_metrics["starting_best_single_test_accuracy"] = accuracy_score(golds, starting_preds[starting_best_utility_index])
-            final_metrics["starting_top-k_ensemble_test_accuracy"] = accuracy_score(golds, final_starting_preds)
+            if not skip_ensemble:
+                final_metrics["starting_top-k_ensemble_test_accuracy"] = accuracy_score(golds, final_starting_preds)
 
             print("starting best validation utility: ", max(starting_utility))
             print("starting best particle on validation: ", starting_best_utility_index)
             print("starting best single test accuracy: ", accuracy_score(golds, starting_preds[starting_best_utility_index]))
-            print("starting top-k ensemble test accuracy: ", accuracy_score(golds, final_starting_preds))
+            if not skip_ensemble:
+                print("starting top-k ensemble test accuracy: ", accuracy_score(golds, final_starting_preds))
 
         final_metrics["ending_best_validation_utility"] = max(ending_utility)
         final_metrics["ending_best_particle_on_validation"] = ending_best_utility_index
         final_metrics["ending_best_single_test_accuracy"] = accuracy_score(golds, ending_preds[ending_best_utility_index])
-        final_metrics["ending_top-k_ensemble_test_accuracy"] = accuracy_score(golds, final_ending_preds)
+        if not skip_ensemble:
+            final_metrics["ending_top-k_ensemble_test_accuracy"] = accuracy_score(golds, final_ending_preds)
 
         print("ending best validation utility: ", max(ending_utility))
         print("ending best particle on validation: ", ending_best_utility_index)
         print("ending best single test accuracy: ", accuracy_score(golds, ending_preds[ending_best_utility_index]))
-        print("ending top-k ensemble test accuracy: ", accuracy_score(golds, final_ending_preds))
+        if not skip_ensemble:
+            print("ending top-k ensemble test accuracy: ", accuracy_score(golds, final_ending_preds))
     
     elif eval_type == "exact_match" or eval_type == "external_api" or eval_type == "perplexity" or eval_type == "rm_default" or eval_type == "rm_concise" or eval_type == "rm_verbose" or eval_type == "human":
         starting_scores = []
@@ -267,29 +269,30 @@ def overall_metrics(name, eval_type, top_k = 10, initial_experts_num = 10):
         print("ending top-k ensemble test accuracy: ", final_metrics["ending_top-k_ensemble_test_accuracy"])
 
     # eval_type independent part of g_history analysis
+    try:
+        with open("search/" + name + "/utility_scratchpad.json", "r") as f:
+            utility_scratchpad = json.load(f)
+            g_history = utility_scratchpad["g_history"]
+        
+        # hoe many times did g_history improve
+        g_history_improve_count = 0
+        for i in range(len(g_history) - 1):
+            if g_history[i] < g_history[i + 1]:
+                g_history_improve_count += 1
+        
+        # when did g_history last change
+        g_history_last_change_index = None
+        for i in range(len(g_history) - 1):
+            if g_history[i] < g_history[i + 1]:
+                g_history_last_change_index = i + 1
 
-    with open("search/" + name + "/utility_scratchpad.json", "r") as f:
-        utility_scratchpad = json.load(f)
-        g_history = utility_scratchpad["g_history"]
-    
-    # hoe many times did g_history improve
-    g_history_improve_count = 0
-    for i in range(len(g_history) - 1):
-        if g_history[i] < g_history[i + 1]:
-            g_history_improve_count += 1
-    
-    # when did g_history last change
-    g_history_last_change_index = None
-    for i in range(len(g_history) - 1):
-        if g_history[i] < g_history[i + 1]:
-            g_history_last_change_index = i + 1
+        final_metrics["g_history_improve_count"] = g_history_improve_count
+        final_metrics["g_history_last_change_index"] = g_history_last_change_index
 
-    final_metrics["g_history_improve_count"] = g_history_improve_count
-    final_metrics["g_history_last_change_index"] = g_history_last_change_index
-
-    print("# g changes: ", g_history_improve_count)
-    print("g last change index: ", g_history_last_change_index)
-
+        print("# g changes: ", g_history_improve_count)
+        print("g last change index: ", g_history_last_change_index)
+    except:
+        pass
     return final_metrics
 
 

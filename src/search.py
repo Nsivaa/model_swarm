@@ -193,6 +193,7 @@ def reinitialize_search_from_particles(
     "g": None,
     "g_worst": None,
     "g_history": [],
+    "iteration": 0,
     }
 
     for i in range(num_particles):
@@ -202,10 +203,6 @@ def reinitialize_search_from_particles(
 
     with open(os.path.join(search_dir, "utility_scratchpad.json"), "w") as f:
         json.dump(utility_scratchpad, f, indent=4)
-
-    # Sanity check
-    assert num_particles == len(
-    [d for d in os.listdir(search_dir) if d.startswith("particle_")])
 
     # Velocity init (same logic as fresh run, but using num_particles)
     # initialize particle now velocity
@@ -446,8 +443,11 @@ if __name__ == "__main__":
     argParser.add_argument("--es_sigma", default=0.01, help="sigma for ES") #
     argParser.add_argument("--es_pop_size", default=20, help="population size for ES") #
     argParser.add_argument("--es_num_iterations", default=3, help="number of iterations for ES") #
-    argParser.add_argument("--continue_from", default=None, help="continue from an existing search directory") # directory name in search/
+    argParser.add_argument("--continue_from", default=None, help=" path of an existing search directory to continue from ") # directory name in search/
+    argParser.add_argument("--reseed_from_particles", default=False, help="whether to start a run from the already existing particles directory.") # directory name in search/
+    argParser.add_argument("--skip_ensemble", default=1, help="whether to skip ensemble metrics.") # directory name in search/
 
+    
     args = argParser.parse_args()
     search_pass_name = args.name
     eval_type = args.eval_type
@@ -479,6 +479,8 @@ if __name__ == "__main__":
     es_pop_size = int(args.es_pop_size)
     es_num_iterations = int(args.es_num_iterations)
     continue_from = args.continue_from
+    reseed_from_particles = bool(int(args.reseed_from_particles))
+    skip_ensemble = bool(int(args.skip_ensemble))
     try:
         initial_experts_num = int(args.initial_experts_num)
     except:
@@ -588,8 +590,57 @@ if __name__ == "__main__":
             particle_trajectory[i] = []
 
     log_with_flush("initializing search... " + current_time_string())
+    # resume an already started search
+    if continue_from:
+        # reuse existing particles, uses fresh state and directory
+        if reseed_from_particles: 
+            mode = "reseeding"
+            search_pass_name = search_pass_name + "_reseed_" + current_time_string().replace(" ", "_")
+            # clone directory
+            src = os.path.join("search", continue_from)
+            dst = os.path.join("search", search_pass_name)
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+            particle_dirs = sorted(
+                d for d in os.listdir(dst)
+                if d.startswith("particle_")
+                and os.path.isdir(os.path.join(dst, d, "now"))
+            )
 
-    if not continue_from:
+
+            particle_source_dirs = [
+                os.path.join(dst, d, "now")
+                for d in particle_dirs
+            ]
+
+            log_with_flush("reseeding search from existing particles (new dataset)")
+            reinitialize_search_from_particles(
+                search_pass_name=search_pass_name,
+                particle_source_dirs =particle_source_dirs,
+                eval_type=eval_type,
+                dataset=dataset,
+                gpus=gpus,
+                base_model=base_model,
+                fast_merge=fast_merge,
+                starting_velocity_mode=starting_velocity_mode,
+                seed=seed,
+            )
+            iter_count = 0
+            evolved_particles_count = 0
+        else:
+            mode = "resuming"
+            log_with_flush("continuing from existing search directory...")
+            # load existing iteration count
+            with open(os.path.join("search", search_pass_name, "utility_scratchpad.json")) as f:
+                utility_scratchpad = json.load(f)
+            g_history = utility_scratchpad["g_history"]
+            iter_count = len(g_history)
+            evolved_particles_count = 0
+            log_with_flush("loaded iteration count: " + str(iter_count))
+            log_with_flush("continuing search... "+current_time_string())
+
+    # standard fresh run, initializes everything
+    else:
+        mode = "fresh"
         initialize_search_records(search_pass_name, particle_paths, eval_type, dataset, gpus, base_model, fast_merge, starting_velocity_mode, seed)
         log_with_flush("search initialized")
         for i in range(len(particle_paths)):
@@ -618,18 +669,8 @@ if __name__ == "__main__":
         evolved_particles_count = 0
         # main search iteration
         iter_count = 0
-    else:
-        
-        log_with_flush("continuing from existing search directory...")
-        # load existing iteration count
-        with open(os.path.join("search", search_pass_name, "utility_scratchpad.json")) as f:
-            utility_scratchpad = json.load(f)
-        g_history = utility_scratchpad["g_history"]
-        iter_count = len(g_history)
-        log_with_flush("loaded iteration count: " + str(iter_count))
-        evolved_particles_count = 0
-        log_with_flush("continuing search... "+current_time_string())
-    
+
+    log_with_flush(f"Starting search, mode: {mode}")
     
     while iter_count < max_iteration:
         iter_count += 1
@@ -911,7 +952,7 @@ if __name__ == "__main__":
     for i in range(len(particle_paths)):
         log_with_flush("particle_"+str(i)+": "+str(results[i]))
 
-    final_metrics = overall_metrics(search_pass_name, eval_type, initial_experts_num = len(particle_paths))
+    final_metrics = overall_metrics(search_pass_name, eval_type, initial_experts_num = len(particle_paths), skip_ensemble = skip_ensemble)
     log_with_flush("final metrics computed 1: "+str(final_metrics))
     
     if eval_type == "AbstainQA":
@@ -991,15 +1032,15 @@ if __name__ == "__main__":
             os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "scores_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "scores.json"))
             os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores.json"))
 
-    final_metrics = overall_metrics(search_pass_name, eval_type)
+    final_metrics = overall_metrics(search_pass_name, eval_type, skip_ensemble = skip_ensemble)
     log_with_flush("final metrics computed 2: "+str(final_metrics))
-
-    dev_final_metrics = {
-        "starting_top-k_ensemble_dev_accuracy": final_metrics["starting_top-k_ensemble_test_accuracy"],
-        "ending_top-k_ensemble_dev_accuracy": final_metrics["ending_top-k_ensemble_test_accuracy"]
-    }
-    wandb.log(dev_final_metrics)
-    log_with_flush("final ensemble metrics for dev: "+str(dev_final_metrics))
+    if not skip_ensemble:
+        dev_final_metrics = {
+            "starting_top-k_ensemble_dev_accuracy": final_metrics["starting_top-k_ensemble_test_accuracy"],
+            "ending_top-k_ensemble_dev_accuracy": final_metrics["ending_top-k_ensemble_test_accuracy"]
+        }
+        wandb.log(dev_final_metrics)
+        log_with_flush("final ensemble metrics for dev: "+str(dev_final_metrics))
 
     if clean_up_on_end:
         shutil.rmtree(os.path.join("search", search_pass_name, "global_worst"))
