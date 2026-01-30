@@ -165,6 +165,18 @@ def reinitialize_search_from_particles(
     num_particles = len(particle_source_dirs)
     search_dir = os.path.join("search", search_pass_name)
 
+    # remove old evaluation
+    for i in range(num_particles):
+        pdir = os.path.join(search_dir, f"particle_{i}")
+
+        # delete old eval outputs
+        for sub in ["now", "personal_best"]:
+            for f in ["preds.json", "golds.json", "preds_dev.json", "golds_dev.json"]:
+                path = os.path.join(pdir, sub, f)
+                if os.path.exists(path):
+                    os.remove(path)
+
+
     # Clear non-particle state
     for item in os.listdir(search_dir):
         if item.startswith("particle_"):
@@ -549,9 +561,19 @@ if __name__ == "__main__":
 
     gpus = [int(gpu) for gpu in gpus.split(",")]
     particle_paths = []
-    for particle_path in os.listdir(initial_expert_directory):
-        if os.path.isdir(os.path.join(initial_expert_directory, particle_path)):
-            particle_paths.append(os.path.join(initial_expert_directory, particle_path))
+
+    if reseed_from_particles:
+        # AFTER copytree, particles live in the new search directory
+        search_dir = os.path.join("search", search_pass_name)
+        for d in os.listdir(search_dir):
+            if d.startswith("particle_") and os.path.isdir(os.path.join(search_dir, d)):
+                particle_paths.append(os.path.join(search_dir, d))
+    else:
+        # original behavior: initial experts
+        for d in os.listdir(initial_expert_directory):
+            if os.path.isdir(os.path.join(initial_expert_directory, d)):
+                particle_paths.append(os.path.join(initial_expert_directory, d))
+
     particle_paths = sorted(particle_paths)
     # populate initial experts
     if populate_initial_experts and initial_experts_num and len(particle_paths) < initial_experts_num:
@@ -605,7 +627,6 @@ if __name__ == "__main__":
                 if d.startswith("particle_")
                 and os.path.isdir(os.path.join(dst, d, "now"))
             )
-
 
             particle_source_dirs = [
                 os.path.join(dst, d, "now")
@@ -1012,27 +1033,28 @@ if __name__ == "__main__":
     wandb.log(final_metrics)
     log_with_flush("final metrics for test: "+str(final_metrics))
 
-    # ensemble for dev set
-    try:
-        for i in range(len(particle_paths)):
-            os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "golds.json"))
-            os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "preds.json"))
-            os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "golds.json"))
-            os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "preds.json"))
+    if not skip_ensemble:
+        # ensemble for dev set
+        try:
+            for i in range(len(particle_paths)):
+                os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "golds.json"))
+                os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "preds.json"))
+                os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "golds.json"))
+                os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "preds.json"))
 
-            os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "golds_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "golds.json"))
-            os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "preds_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "preds.json"))
-            os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "golds_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "now", "golds.json"))
-            os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "preds_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "now", "preds.json"))
-    except:
-        for i in range(len(particle_paths)):
-            os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "scores.json"))
-            os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores.json"))
+                os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "golds_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "golds.json"))
+                os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "preds_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "preds.json"))
+                os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "golds_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "now", "golds.json"))
+                os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "preds_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "now", "preds.json"))
+        except:
+            for i in range(len(particle_paths)):
+                os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "scores.json"))
+                os.remove(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores.json"))
 
-            os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "scores_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "scores.json"))
-            os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores.json"))
+                os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "scores_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "personal_best", "scores.json"))
+                os.rename(os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores_dev.json"), os.path.join("search", search_pass_name, "particle_"+str(i), "now", "scores.json"))
 
-    final_metrics = overall_metrics(search_pass_name, eval_type, skip_ensemble = skip_ensemble)
+    final_metrics = overall_metrics(search_pass_name, eval_type, skip_ensemble = skip_ensemble, initial_experts_num = initial_experts_num)
     log_with_flush("final metrics computed 2: "+str(final_metrics))
     if not skip_ensemble:
         dev_final_metrics = {
