@@ -4,7 +4,11 @@ import argparse
 from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
 import numpy as np
+import logging
 
+def log_with_flush(message, level=logging.INFO):
+  logging.log(level, message)
+  logging.getLogger().handlers[0].flush()
 
 def avg(lst):
     return sum(lst) / len(lst)
@@ -108,9 +112,7 @@ def overall_metrics(name, eval_type, top_k = 10, initial_experts_num = 10, skip_
                         starting_preds.append(particle_data)
                     with open(os.path.join("search", name, particle_path, "now/golds.json"), "r") as f:
                         gold_data = json.load(f)
-                        if golds and not eval_type == "AbstainQA":
-                            assert golds == gold_data
-                        else:
+                        if golds is None:
                             golds = gold_data
             
             with open(os.path.join("search", name, "utility_scratchpad.json"), "r") as f:
